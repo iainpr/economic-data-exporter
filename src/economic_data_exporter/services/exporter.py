@@ -125,7 +125,7 @@ def _readme_rows(
 def _safe_data_for_excel(data: pd.DataFrame) -> pd.DataFrame:
     frame = data.copy()
     for column in frame.columns:
-        if frame[column].dtype == "object":
+        if pd.api.types.is_object_dtype(frame[column]) or pd.api.types.is_string_dtype(frame[column]):
             frame[column] = frame[column].map(safe_excel_text)
     return frame
 
