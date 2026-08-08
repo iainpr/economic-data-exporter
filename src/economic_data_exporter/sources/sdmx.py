@@ -183,15 +183,12 @@ class SDMXSource(DataSource):
             expected_content_types=("csv", "xml", "text/plain", "octet-stream"),
             use_cache=not bool(request.options.get("ignore_cache")),
         )
-        try:
-            if "xml" in response.headers.get(
-                "Content-Type", ""
-            ).lower() or response.text.lstrip().startswith("<"):
-                frame = self._xml_data(response.content)
-            else:
-                frame = self._csv_data(response.text)
-        except ParsingError:
-            raise
+        if "xml" in response.headers.get(
+            "Content-Type", ""
+        ).lower() or response.text.lstrip().startswith("<"):
+            frame = self._xml_data(response.content)
+        else:
+            frame = self._csv_data(response.text)
         if frame.empty:
             raise ParsingError(f"{self.name} returned no observations for {series_id}.")
         metadata = SeriesMetadata(

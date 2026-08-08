@@ -1,11 +1,13 @@
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from economic_data_exporter.exceptions import ValidationError
 from economic_data_exporter.utils.validation import (
     validate_date_range,
+    validate_observations,
     validate_output_path,
     validate_series_id,
 )
@@ -31,6 +33,24 @@ def test_safe_output_path(tmp_path: Path) -> None:
     assert validate_output_path(tmp_path / "out.xlsx").suffix == ".xlsx"
     with pytest.raises(ValidationError):
         validate_output_path(tmp_path / "out.csv")
+
+
+def test_validate_observations_warns_when_input_is_unsorted() -> None:
+    unsorted = pd.DataFrame(
+        {
+            "date": pd.to_datetime(["2020-01-02", "2020-01-01"]),
+            "value": [1.0, 2.0],
+            "series_id": ["A", "A"],
+            "geography": ["", ""],
+        }
+    )
+    warnings = validate_observations(unsorted, max_records=100)
+    assert "Observations were sorted by date during normalization." in warnings
+
+    sorted_frame = unsorted.sort_values("date").reset_index(drop=True)
+    assert "Observations were sorted by date during normalization." not in validate_observations(
+        sorted_frame, max_records=100
+    )
 
 
 def test_imf_geography_is_required_in_job_runner():

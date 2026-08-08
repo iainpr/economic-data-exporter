@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from economic_data_exporter import __version__
 from economic_data_exporter.gui.worker import ExportWorker, FetchWorker, SearchWorker
 from economic_data_exporter.models import (
     DATA_COLUMNS,
@@ -720,7 +721,8 @@ class MainWindow(QMainWindow):
             lambda: QMessageBox.information(
                 self,
                 "Economic Data Exporter",
-                "Research-oriented economic data retrieval and Excel export.\nVersion 0.6.0",
+                "Research-oriented economic data retrieval and Excel export.\n"
+                f"Version {__version__}",
             )
         )
         footer.addWidget(settings_button)
@@ -1080,9 +1082,10 @@ class MainWindow(QMainWindow):
             return
 
         added = 0
+        existing = self._existing_signatures()
         for metadata in metadata_list:
             geography = metadata.geography or shared_geography
-            if metadata.source in {"World Bank", "Penn World Table", "IMF"}:
+            if metadata.source in GEOGRAPHY_REQUIRED_SOURCES:
                 geography = validate_geography(geography, required=True)
             elif geography:
                 geography = validate_geography(geography)
@@ -1095,7 +1098,7 @@ class MainWindow(QMainWindow):
                 frequency=self.frequency_edit.text().strip() if metadata.source == "FRED" else "",
                 options=self._options_for_source(metadata.source),
             )
-            if self._append_request(request, metadata.name):
+            if self._append_request(request, metadata.name, existing):
                 added += 1
         self.status_label.setText(f"Added {added} metadata result(s)")
 
@@ -1142,13 +1145,15 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Validation error", str(exc))
             return
 
-        added = sum(self._append_request(request, name) for request, name in requests)
+        existing = self._existing_signatures()
+        added = sum(self._append_request(request, name, existing) for request, name in requests)
         self.status_label.setText(
             f"Added {added} new request(s) from {len(raw_ids)} ID(s) × {len(sources)} source(s)"
         )
 
-    def _append_request(self, request: SeriesRequest, name: str) -> bool:
-        signature = (
+    @staticmethod
+    def _request_signature(request: SeriesRequest) -> tuple:
+        return (
             request.source,
             request.series_id,
             request.geography,
@@ -1156,19 +1161,15 @@ class MainWindow(QMainWindow):
             request.end_date,
             request.frequency,
         )
-        existing = {
-            (
-                item.source,
-                item.series_id,
-                item.geography,
-                item.start_date,
-                item.end_date,
-                item.frequency,
-            )
-            for item in self.requests
-        }
+
+    def _existing_signatures(self) -> set[tuple]:
+        return {self._request_signature(item) for item in self.requests}
+
+    def _append_request(self, request: SeriesRequest, name: str, existing: set[tuple]) -> bool:
+        signature = self._request_signature(request)
         if signature in existing:
             return False
+        existing.add(signature)
         self.requests.append(request)
         row = self.table.rowCount()
         self.table.insertRow(row)

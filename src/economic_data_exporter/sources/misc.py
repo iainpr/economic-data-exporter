@@ -7,6 +7,7 @@ from io import StringIO
 
 import pandas as pd
 
+from economic_data_exporter import __version__
 from economic_data_exporter.exceptions import ParsingError
 from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceResult
 from economic_data_exporter.network import HttpClient
@@ -319,8 +320,8 @@ class FAOSTATSource(DataSource):
 
     def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         raise ValueError(
-            "FAOSTAT retrieval is intentionally not enabled in 0.6.0 until the official "
-            "API query/authentication contract is fully verified."
+            f"FAOSTAT retrieval is intentionally not enabled in {__version__} until the "
+            "official API query/authentication contract is fully verified."
         )
 
 

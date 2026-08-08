@@ -111,7 +111,7 @@ class WorldBankSource(DataSource):
             geography=str(country.get("value") or geography),
             frequency=str(meta.get("unit") or "Annual/indicator-defined"),
             units=str(meta.get("unit") or ""),
-            source_url=response.url if "response" in locals() else source_url,
+            source_url=response.url,
             attribution="World Bank Indicators API; cite the named source "
             "organization where provided.",
             license_text="World Bank Data terms and any dataset-specific terms apply.",

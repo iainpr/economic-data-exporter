@@ -97,8 +97,7 @@ def validate_observations(frame: pd.DataFrame, *, max_records: int) -> list[str]
         raise ValidationError(
             "Provider response contains duplicate observations for the same date and series."
         )
-    ordered = frame.sort_values("date")["date"]
-    if not ordered.is_monotonic_increasing:
+    if not frame["date"].is_monotonic_increasing:
         warnings.append("Observations were sorted by date during normalization.")
     if frame["value"].isna().any():
         warnings.append("Provider missing values were preserved explicitly.")
