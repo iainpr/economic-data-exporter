@@ -625,7 +625,13 @@ class MainWindow(QMainWindow):
             source_layout.addWidget(check)
             self.source_checks[source_name] = check
         if self.source_checks:
-            next(iter(self.source_checks.values())).setChecked(True)
+            # Set the default selection without firing _source_selection_changed yet:
+            # it reads widgets (e.g. frequency_edit) that are constructed later in
+            # __init__. The explicit call after construction (below) picks it up.
+            first_check = next(iter(self.source_checks.values()))
+            first_check.blockSignals(True)
+            first_check.setChecked(True)
+            first_check.blockSignals(False)
         side.addWidget(source_container, 1)
 
         source_buttons = QHBoxLayout()
@@ -852,7 +858,8 @@ class MainWindow(QMainWindow):
         scroll.setWidget(workspace)
         root_layout.addWidget(scroll, 1)
 
-        self._update_fred_key_status()
+        self._keyring_has_fred_key = False
+        self._refresh_keyring_status()
         self._source_selection_changed()
         self._update_queue_count()
 
@@ -901,16 +908,22 @@ class MainWindow(QMainWindow):
             options["api_key"] = key
         return options
 
+    def _refresh_keyring_status(self) -> None:
+        # A real keyring lookup (OS Secret Service/DBus/Keychain round trip) belongs
+        # here only; _update_fred_key_status() below must stay a cheap, local read
+        # since it runs on every source checkbox toggle.
+        try:
+            self._keyring_has_fred_key = bool((keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip())
+        except keyring.errors.KeyringError:
+            self._keyring_has_fred_key = False
+        self._update_fred_key_status()
+
     def _update_fred_key_status(self) -> None:
         env_present = bool(os.environ.get("FRED_API_KEY", "").strip())
-        try:
-            keyring_present = bool((keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip())
-        except keyring.errors.KeyringError:
-            keyring_present = False
         states = []
         if env_present:
             states.append("environment variable detected")
-        if keyring_present:
+        if self._keyring_has_fred_key:
             states.append("saved in OS keyring")
         if self.fred_key_edit.text().strip():
             states.append("key entered in this session")
@@ -926,6 +939,7 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "No saved key", "No FRED API key is currently saved in the OS keyring.")
             return
         self.fred_key_edit.setText(key)
+        self._keyring_has_fred_key = True
         self._update_fred_key_status()
 
     def _save_fred_key(self) -> None:
@@ -938,6 +952,7 @@ class MainWindow(QMainWindow):
         except keyring.errors.KeyringError as exc:
             QMessageBox.warning(self, "Credential error", f"Could not save the key to the OS keyring: {exc}")
             return
+        self._keyring_has_fred_key = True
         self._update_fred_key_status()
         QMessageBox.information(self, "Key saved", "The FRED API key was saved to the OS keyring.")
 
@@ -949,6 +964,7 @@ class MainWindow(QMainWindow):
         except keyring.errors.KeyringError as exc:
             QMessageBox.warning(self, "Credential error", f"Could not delete the key: {exc}")
             return
+        self._keyring_has_fred_key = False
         self._update_fred_key_status()
 
     def _search_metadata(self) -> None:
