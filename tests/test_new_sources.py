@@ -36,6 +36,46 @@ def test_imf_search():
     c=FakeClient({f"{base}/indicators":Resp('{"indicators":{"NGDP_RPCH":{"label":"Real GDP growth"}}}')})
     assert IMFSource(c).search("GDP")[0].series_id == "NGDP_RPCH"
 
+
+def test_imf_catalogue_fetched_once_across_search_and_fetch():
+    base = "https://www.imf.org/external/datamapper/api/v2"
+
+    class CountingClient(FakeClient):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.get_calls = 0
+
+        def get(self, url, **kwargs):
+            if url == f"{base}/indicators":
+                self.get_calls += 1
+            return self.responses[url]
+
+    c = CountingClient(
+        {
+            f"{base}/indicators": Resp('{"indicators":{"NGDP_RPCH":{"label":"Real GDP growth"}}}'),
+            f"{base}/NGDP_RPCH/US": Resp('{"values":{"NGDP_RPCH":{"US":{"2020":1.0,"2021":2.0}}}}'),
+        }
+    )
+    source = IMFSource(c)
+    assert source.search("GDP")[0].series_id == "NGDP_RPCH"
+    result = source.fetch(
+        type(
+            "R",
+            (),
+            {
+                "series_id": "NGDP_RPCH",
+                "start_date": pd.Timestamp("2020-01-01").date(),
+                "end_date": pd.Timestamp("2021-12-31").date(),
+                "geography": "US",
+                "frequency": "",
+                "options": {},
+            },
+        )(),
+        cancel=lambda: None,
+    )
+    assert result.metadata.name == "Real GDP growth"
+    assert c.get_calls == 1
+
 def test_ilostat_csv_normalization():
     base="https://rplumber.ilo.org/data/indicator/"
     csv='ref_area,ref_area.label,indicator,indicator.label,time,obs_value\nCAN,Canada,UNE,Unemployment,2020,8.1\nCAN,Canada,UNE,Unemployment,2021,7.5\n'

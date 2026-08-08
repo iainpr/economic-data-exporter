@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import threading
 from io import StringIO
 
 import pandas as pd
 
 from economic_data_exporter.exceptions import ParsingError
 from economic_data_exporter.models import SeriesMetadata
+from economic_data_exporter.network import HttpClient
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.sources.sdmx import SDMXSource
 from economic_data_exporter.utils.validation import validate_series_id
@@ -99,15 +101,32 @@ class IMFSource(DataSource):
     hosts = ("www.imf.org",)
     source_url = "https://www.imf.org/external/datamapper/api/"
 
+    def __init__(self, client: HttpClient) -> None:
+        super().__init__(client)
+        self._catalogue_lock = threading.Lock()
+        self._catalogue: dict[str, object] | None = None
+
+    def _indicator_catalogue(self, *, ignore_cache: bool) -> dict[str, object]:
+        # The full indicator catalogue is fetched and JSON-decoded here at most
+        # once per adapter instance (unless a refresh is explicitly requested);
+        # search() and fetch() both look it up from memory afterward instead of
+        # each re-fetching and re-parsing it independently.
+        with self._catalogue_lock:
+            if self._catalogue is not None and not ignore_cache:
+                return self._catalogue
+            response = self.client.get(
+                f"{self.base_url}/indicators",
+                trusted_hosts=self.hosts,
+                expected_content_types=("json",),
+                use_cache=not ignore_cache,
+            )
+            payload = response.json()
+            indicators = payload.get("indicators", {}) if isinstance(payload, dict) else {}
+            self._catalogue = indicators
+            return indicators
+
     def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
-        response = self.client.get(
-            f"{self.base_url}/indicators",
-            trusted_hosts=self.hosts,
-            expected_content_types=("json",),
-            use_cache=not bool((options or {}).get("ignore_cache")),
-        )
-        payload = response.json()
-        indicators = payload.get("indicators", {}) if isinstance(payload, dict) else {}
+        indicators = self._indicator_catalogue(ignore_cache=bool((options or {}).get("ignore_cache")))
         q = query.casefold().strip()
         out: list[SeriesMetadata] = []
         for code, info in indicators.items():
@@ -134,6 +153,7 @@ class IMFSource(DataSource):
         if not geo:
             raise ValueError("IMF DataMapper retrieval requires a country, region, or group code in Geography.")
         cancel()
+        ignore_cache = bool(request.options.get("ignore_cache"))
         response = self.client.get(
             f"{self.base_url}/{indicator}/{geo}",
             trusted_hosts=self.hosts,
@@ -143,26 +163,24 @@ class IMFSource(DataSource):
                 )
             },
             expected_content_types=("json",),
-            use_cache=not bool(request.options.get("ignore_cache")),
+            use_cache=not ignore_cache,
         )
         payload = response.json()
         values = payload.get("values", {}) if isinstance(payload, dict) else {}
         series = values.get(indicator, {}).get(geo, {}) if isinstance(values, dict) else {}
         if not series:
             raise ParsingError(f"IMF returned no observations for {indicator} / {geo}.")
-        metadata_results = self.search(indicator)
-        metadata = (
-            metadata_results[0]
-            if metadata_results
-            else SeriesMetadata(
-                source=self.name,
-                series_id=indicator,
-                name=indicator,
-                frequency="Annual",
-                source_url=self.source_url,
-                attribution="International Monetary Fund, DataMapper",
-                license_text="See IMF data terms.",
-            )
+        catalogue = self._indicator_catalogue(ignore_cache=ignore_cache)
+        info = catalogue.get(indicator)
+        label = str(info.get("label", indicator)) if isinstance(info, dict) else indicator
+        metadata = SeriesMetadata(
+            source=self.name,
+            series_id=indicator,
+            name=label,
+            frequency="Annual",
+            source_url=self.source_url,
+            attribution="International Monetary Fund, DataMapper",
+            license_text="See IMF data terms.",
         )
         dates = pd.to_datetime([f"{year}-01-01" for year in series], errors="coerce")
         vals = pd.Series(list(series.values()))
