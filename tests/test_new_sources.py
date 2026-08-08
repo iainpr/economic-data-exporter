@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+from economic_data_exporter.exceptions import ParsingError
 from economic_data_exporter.sources.sdmx import SDMXSource
 from economic_data_exporter.sources.misc import (
     FAOSTATSource,
@@ -49,6 +51,20 @@ def test_sdmx_requires_flow_and_key():
     try: X(c).fetch(type("R",(),{"series_id":"FLOW","start_date":pd.Timestamp("2020-01-01").date(),"end_date":pd.Timestamp("2021-01-01").date(),"geography":"","frequency":"","options":{}})(), cancel=lambda:None)
     except ValueError as exc: assert "DATAFLOW|KEY" in str(exc)
     else: raise AssertionError("Expected validation error")
+
+def test_sdmx_xml_rejects_doctype_before_parsing():
+    class X(SDMXSource):
+        name = "X"
+        base_url = "https://example.org/rest"
+        hosts = ("example.org",)
+        source_url = "https://example.org"
+        attribution = "X"
+        license_text = "X"
+
+    payload = b'<?xml version="1.0"?><!DOCTYPE foo [<!ENTITY bar "baz">]><foo>&bar;</foo>'
+    with pytest.raises(ParsingError, match="DOCTYPE"):
+        X(FakeClient({}))._xml_data(payload)
+
 
 def test_faostat_is_explicitly_limited_without_verified_auth_flow():
     src=FAOSTATSource(FakeClient({}))

@@ -16,6 +16,8 @@ from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceR
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.utils.validation import validate_series_id
 
+_DOCTYPE_MARKER = b"<!DOCTYPE"
+
 
 class SDMXSource(DataSource):
     base_url: str
@@ -82,6 +84,10 @@ class SDMXSource(DataSource):
         return out
 
     def _xml_data(self, content: bytes) -> pd.DataFrame:
+        if _DOCTYPE_MARKER in content[:1024].lstrip().upper():
+            raise ParsingError(
+                f"{self.name} SDMX XML response was rejected because it declares a DOCTYPE."
+            )
         try:
             root = ET.fromstring(content)
         except ET.ParseError as exc:
