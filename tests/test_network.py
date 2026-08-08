@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from economic_data_exporter.config import Limits
-from economic_data_exporter.exceptions import NetworkError, RateLimitError
+from economic_data_exporter.exceptions import NetworkError, RateLimitError, SourceNotFoundError
 from economic_data_exporter.network import HttpClient
 
 
@@ -85,6 +85,59 @@ def test_streamed_response_size_limit(tmp_path: Path) -> None:
             trusted_hosts=("example.org",),
             max_bytes=1024,
         )
+
+
+def test_post_json_enforces_size_limit_while_streaming(tmp_path: Path) -> None:
+    client = HttpClient(
+        limits=limits(0),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                content=b"x" * 2048,
+                headers={"content-type": "application/json"},
+                request=request,
+            )
+        ),
+    )
+    with pytest.raises(NetworkError):
+        client.post_json(
+            "https://example.org/data",
+            trusted_hosts=("example.org",),
+            payload={"vectorId": 1},
+            max_bytes=1024,
+        )
+
+
+def test_post_json_maps_404_to_source_not_found(tmp_path: Path) -> None:
+    client = HttpClient(
+        limits=limits(0),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(lambda request: httpx.Response(404, request=request)),
+    )
+    with pytest.raises(SourceNotFoundError):
+        client.post_json(
+            "https://example.org/data",
+            trusted_hosts=("example.org",),
+            payload={"vectorId": 1},
+        )
+
+
+def test_post_json_uses_cache_on_repeat_payload(tmp_path: Path) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"ok": True}, request=request)
+
+    client = HttpClient(
+        limits=limits(0), cache_dir=tmp_path, transport=httpx.MockTransport(handler), sleep=lambda _: None
+    )
+    first = client.post_json("https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1})
+    second = client.post_json("https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1})
+    assert calls == 1
+    assert first.json() == second.json() == {"ok": True}
 
 
 def test_cached_metadata_redacts_secret_url(tmp_path: Path) -> None:

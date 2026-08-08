@@ -95,13 +95,27 @@ class HttpClient:
         if parts.username or parts.password:
             raise NetworkError("Credentials in URLs are not permitted.")
 
-    def _cache_paths(self, url: str, params: dict[str, object] | None) -> tuple[Path, Path]:
+    def _cache_paths(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, object] | None,
+        json_payload: object | None,
+    ) -> tuple[Path, Path]:
         canonical = str(httpx.URL(url, params=params))
-        digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        if json_payload is not None:
+            canonical += "|" + json.dumps(json_payload, sort_keys=True, default=str)
+        digest = hashlib.sha256(f"{method}:{canonical}".encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.bin", self.cache_dir / f"{digest}.json"
 
-    def _read_cache(self, url: str, params: dict[str, object] | None) -> FetchResponse | None:
-        body_path, meta_path = self._cache_paths(url, params)
+    def _read_cache(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, object] | None,
+        json_payload: object | None,
+    ) -> FetchResponse | None:
+        body_path, meta_path = self._cache_paths(method, url, params, json_payload)
         if not body_path.exists() or not meta_path.exists():
             return None
         try:
@@ -121,8 +135,14 @@ class HttpClient:
         except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
             return None
 
-    def _write_cache(self, response: FetchResponse, params: dict[str, object] | None) -> None:
-        body_path, meta_path = self._cache_paths(response.url.split("?", 1)[0], params)
+    def _write_cache(
+        self,
+        method: str,
+        response: FetchResponse,
+        params: dict[str, object] | None,
+        json_payload: object | None,
+    ) -> None:
+        body_path, meta_path = self._cache_paths(method, response.url.split("?", 1)[0], params, json_payload)
         unique = f".{os.getpid()}.{threading.get_ident()}.tmp"
         body_tmp = body_path.with_name(body_path.name + unique)
         meta_tmp = meta_path.with_name(meta_path.name + unique)
@@ -172,18 +192,67 @@ class HttpClient:
         use_cache: bool = True,
         max_bytes: int | None = None,
     ) -> FetchResponse:
+        return self._request(
+            "GET",
+            url,
+            trusted_hosts=trusted_hosts,
+            params=params,
+            expected_content_types=expected_content_types,
+            use_cache=use_cache,
+            max_bytes=max_bytes,
+        )
+
+    def post_json(
+        self,
+        url: str,
+        *,
+        trusted_hosts: Iterable[str],
+        payload: object,
+        expected_content_types: tuple[str, ...] = ("json",),
+        use_cache: bool = True,
+        max_bytes: int | None = None,
+    ) -> FetchResponse:
+        """Bounded HTTPS JSON POST used only for provider APIs that require POST metadata calls."""
+        return self._request(
+            "POST",
+            url,
+            trusted_hosts=trusted_hosts,
+            json_payload=payload,
+            expected_content_types=expected_content_types,
+            use_cache=use_cache,
+            max_bytes=max_bytes,
+        )
+
+    def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        trusted_hosts: Iterable[str],
+        params: dict[str, object] | None = None,
+        json_payload: object | None = None,
+        expected_content_types: tuple[str, ...] = (),
+        use_cache: bool = True,
+        max_bytes: int | None = None,
+    ) -> FetchResponse:
         self._validate_url(url, trusted_hosts)
         request_path = urlsplit(url).path
         started = time.perf_counter()
-        if use_cache and (cached := self._read_cache(url, params)) is not None:
-            LOGGER.info("GET cache_hit host=%s path=%s bytes=%d", urlsplit(url).hostname, request_path, len(cached.content))
+        if use_cache and (cached := self._read_cache(method, url, params, json_payload)) is not None:
+            LOGGER.info(
+                "%s cache_hit host=%s path=%s bytes=%d",
+                method,
+                urlsplit(url).hostname,
+                request_path,
+                len(cached.content),
+            )
             return cached
 
         max_size = max_bytes or self.limits.max_response_bytes
         last_error: Exception | None = None
         for attempt in range(self.limits.max_retries + 1):
             try:
-                with self._client.stream("GET", url, params=params) as response:
+                with self._client.stream(method, url, params=params, json=json_payload) as response:
                     if response.is_redirect:
                         raise NetworkError("Unexpected redirect was refused.")
                     if response.status_code in {401, 403}:
@@ -197,7 +266,8 @@ class HttpClient:
                             )
                         retry_after = response.headers.get("Retry-After")
                         LOGGER.warning(
-                            "GET retry rate_limit host=%s path=%s attempt=%d",
+                            "%s retry rate_limit host=%s path=%s attempt=%d",
+                            method,
                             urlsplit(url).hostname,
                             request_path,
                             attempt + 1,
@@ -215,7 +285,8 @@ class HttpClient:
                                 f"Provider remained unavailable (HTTP {response.status_code})."
                             )
                         LOGGER.warning(
-                            "GET retry transient_status host=%s path=%s status=%d attempt=%d",
+                            "%s retry transient_status host=%s path=%s status=%d attempt=%d",
+                            method,
                             urlsplit(url).hostname,
                             request_path,
                             response.status_code,
@@ -259,7 +330,8 @@ class HttpClient:
                         f"Network request failed: {exc.__class__.__name__}"
                     ) from exc
                 LOGGER.warning(
-                    "GET retry network_error host=%s path=%s attempt=%d",
+                    "%s retry network_error host=%s path=%s attempt=%d",
+                    method,
                     urlsplit(url).hostname,
                     request_path,
                     attempt + 1,
@@ -268,9 +340,10 @@ class HttpClient:
                 continue
 
             if use_cache:
-                self._write_cache(fetched, params)
+                self._write_cache(method, fetched, params, json_payload)
             LOGGER.info(
-                "GET live host=%s path=%s status=%d bytes=%d elapsed_s=%.4f",
+                "%s live host=%s path=%s status=%d bytes=%d elapsed_s=%.4f",
+                method,
                 urlsplit(url).hostname,
                 request_path,
                 fetched.status_code,
@@ -279,54 +352,6 @@ class HttpClient:
             )
             return fetched
         raise NetworkError(f"Network request failed: {last_error}")
-
-
-    def post_json(
-        self,
-        url: str,
-        *,
-        trusted_hosts: Iterable[str],
-        payload: object,
-        expected_content_types: tuple[str, ...] = ("json",),
-        max_bytes: int | None = None,
-    ) -> FetchResponse:
-        """Bounded HTTPS JSON POST used only for provider APIs that require POST metadata calls."""
-        self._validate_url(url, trusted_hosts)
-        max_size = max_bytes or self.limits.max_response_bytes
-        started = time.perf_counter()
-        for attempt in range(self.limits.max_retries + 1):
-            try:
-                response = self._client.post(url, json=payload)
-                if response.is_redirect:
-                    raise NetworkError("Unexpected redirect was refused.")
-                if response.status_code in {401, 403}:
-                    raise AuthenticationError("Provider rejected authentication or access.")
-                if response.status_code == 429:
-                    if attempt >= self.limits.max_retries:
-                        raise RateLimitError("Provider rate limit was exceeded after bounded retries.")
-                    self._backoff(attempt)
-                    continue
-                if response.status_code in {408, 500, 502, 503, 504}:
-                    if attempt >= self.limits.max_retries:
-                        raise SourceUnavailableError(f"Provider remained unavailable (HTTP {response.status_code}).")
-                    self._backoff(attempt)
-                    continue
-                if response.status_code < 200 or response.status_code >= 300:
-                    raise NetworkError(f"Provider returned HTTP {response.status_code}.")
-                content_type = response.headers.get("Content-Type", "").lower()
-                if expected_content_types and not any(item in content_type for item in expected_content_types):
-                    raise NetworkError(f"Unexpected response content type: {content_type or 'missing'}.")
-                content = response.content
-                if len(content) > max_size:
-                    raise NetworkError(f"Response exceeds the configured {max_size:,}-byte limit.")
-                fetched = FetchResponse(url=redact_url(str(response.url)), status_code=response.status_code, headers=dict(response.headers), content=content, retrieved_at=datetime.now(timezone.utc))
-                LOGGER.info("POST live host=%s path=%s status=%d bytes=%d elapsed_s=%.4f", urlsplit(url).hostname, urlsplit(url).path, response.status_code, len(content), time.perf_counter() - started)
-                return fetched
-            except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                if attempt >= self.limits.max_retries:
-                    raise NetworkError(f"Network request failed: {exc.__class__.__name__}") from exc
-                self._backoff(attempt)
-        raise NetworkError("POST request failed after bounded retries.")
 
     def _backoff(self, attempt: int, retry_after: float | None = None) -> None:
         delay = retry_after if retry_after is not None else min(8.0, 0.5 * (2**attempt))
