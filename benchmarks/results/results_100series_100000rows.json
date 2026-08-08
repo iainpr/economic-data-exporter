@@ -1,0 +1,30 @@
+{
+  "benchmark_kind": "mocked Bank of Canada-shaped provider; no live network latency",
+  "profiled": false,
+  "python": "3.13.5",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "machine": "x86_64",
+  "processor": "",
+  "logical_cpu_count": 3,
+  "system_memory_bytes": 6368813056,
+  "series_count": 100,
+  "observations_per_series": 1000,
+  "normalized_rows": 100000,
+  "retrieval_and_per_series_normalization_seconds": 2.9693,
+  "single_concat_seconds": 0.4273,
+  "excel_export_and_validation_seconds": 22.7804,
+  "total_pipeline_seconds": 26.177,
+  "baseline_rss_bytes": 134496256,
+  "sampled_peak_rss_bytes": 620154880,
+  "sampled_incremental_peak_bytes": 485658624,
+  "process_max_rss_bytes": 621518848,
+  "workbook_bytes": 4517555,
+  "cpu_profile": null,
+  "workbook": "benchmark_100series_100000rows.xlsx",
+  "known_limits": [
+    "Fixture excludes real provider latency, throttling, server-side pagination, and compression variability.",
+    "openpyxl workbook generation is expected to dominate CPU and memory for large jobs.",
+    "Configured application-wide normalized-row limit is 500,000 rows.",
+    "Excel permits at most 1,048,576 rows per worksheet including the header."
+  ]
+}
