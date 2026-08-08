@@ -13,7 +13,6 @@ authors = [{name = "Economic Data Exporter contributors"}]
 dependencies = [
   "PySide6>=6.8,<7",
   "pandas>=2.2,<3",
-  "numpy>=1.26,<3",
   "httpx>=0.27,<1",
   "openpyxl>=3.1,<4",
   "platformdirs>=4.3,<5",
@@ -30,9 +29,6 @@ dev = [
   "mypy>=1.14,<2",
   "coverage[toml]>=7.6,<8",
   "memory-profiler>=0.61,<0.62",
-]
-analysis = [
-  "quantecon>=0.8,<1",
 ]
 
 [project.scripts]

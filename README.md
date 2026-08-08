@@ -71,7 +71,7 @@ The application intentionally preserves the original case of both identifiers an
 src/economic_data_exporter/
   gui/                PySide6 widgets and QThread workers
   sources/            One adapter per provider plus common DataSource contract
-  services/           Job orchestration, atomic Excel export, optional analysis
+  services/           Job orchestration, atomic Excel export
   utils/              Validation, logging, redaction
   models.py           Immutable requests/metadata and normalized result models
   network.py          HTTPS allow-lists, timeouts, retries, caching, size limits
@@ -79,7 +79,7 @@ src/economic_data_exporter/
 
 The GUI creates `SeriesRequest` objects only. `JobRunner` validates each request, retrieves independent series with bounded concurrency, and passes successful `SourceResult` objects to the exporter. Provider endpoint construction and parsing never occur in GUI code.
 
-The canonical `Data` worksheet is produced only from normalized source results. Optional analysis functions always copy their inputs and return separate derived frames. They do not receive a workbook handle and cannot modify the raw worksheet.
+The canonical `Data` worksheet is produced only from normalized source results.
 
 ## Installation
 
@@ -122,7 +122,7 @@ Launch:
 economic-data-exporter
 ```
 
-You do not need LibreOffice, Microsoft Excel, R, Docker, a database, a GPU, or QuantEcon for normal retrieval and Excel export. PySide6, pandas, NumPy, HTTPX, openpyxl, platformdirs, and keyring are installed as Python dependencies inside the virtual environment.
+You do not need LibreOffice, Microsoft Excel, R, Docker, a database, or a GPU for retrieval and Excel export. PySide6, pandas, HTTPX, openpyxl, platformdirs, and keyring are installed as Python dependencies inside the virtual environment.
 
 For optional secure FRED-key storage on Linux, configure an OS Secret Service/keyring backend such as GNOME Keyring or an existing KWallet/KeePassXC Secret Service provider. The application can also use `FRED_API_KEY` without a keyring.
 
@@ -224,25 +224,6 @@ Defaults are intentionally conservative:
 
 The cache stores response bodies and redacted metadata only. Refresh/ignore-cache is available in the GUI. Logs record timing, byte counts, cache hits, retries, and source/job stages without query strings or API keys.
 
-## Optional analysis and QuantEcon
-
-The core application does not import or require QuantEcon. Install the optional group only for an explicit Markov-regime workflow:
-
-```bash
-pip install -e ".[analysis]"
-```
-
-Available service functions in `services/analysis.py`:
-
-- Descriptive statistics.
-- Explicit percent change or log difference.
-- Correlation matrix with overlap counts.
-- Optional empirical-regime transition analysis using `quantecon.MarkovChain` stationary distributions.
-
-Derived outputs retain method parameters and provenance in DataFrame attributes. The QuantEcon workflow follows the documented `MarkovChain` API and the discrete-state Markov-chain concepts in the QuantEcon lectures: https://quantecon.org/lectures/
-
-No analysis runs automatically, and no analysis function can overwrite provider observations.
-
 ## Tests and quality checks
 
 Install development dependencies:
@@ -262,7 +243,7 @@ black --check .
 mypy src/economic_data_exporter
 ```
 
-Automated tests use mocked HTTP transports and make no live network calls. They cover date and identifier validation, URL parameters, pagination, retries, timeouts, rate limiting, malformed provider data, duplicate/missing observations, secret redaction, normalization, workbook sheets, partial failures, output paths, and raw-data isolation from optional analysis.
+Automated tests use mocked HTTP transports and make no live network calls. They cover date and identifier validation, URL parameters, pagination, retries, timeouts, rate limiting, malformed provider data, duplicate/missing observations, secret redaction, normalization, workbook sheets, partial failures, and output paths.
 
 ## Benchmarks
 
