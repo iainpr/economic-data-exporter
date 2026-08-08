@@ -94,6 +94,56 @@ def test_official_dataverse_download_and_filter(tmp_path: Path) -> None:
     assert result.metadata.source_url == "https://doi.org/10.34894/FABVLR"
 
 
+def test_workbook_parsed_once_across_search_and_fetch_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    content = workbook_bytes()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/:persistentId/"):
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "latestVersion": {
+                            "files": [{"label": "pwt110.xlsx", "dataFile": {"id": 123, "filename": "pwt110.xlsx"}}]
+                        }
+                    }
+                },
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            content=content,
+            headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+            request=request,
+        )
+
+    source = PennWorldTableSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
+
+    parse_calls = 0
+    original_read_sheets = PennWorldTableSource._read_sheets
+
+    def counting_read_sheets(payload: bytes) -> tuple[pd.DataFrame, pd.DataFrame]:
+        nonlocal parse_calls
+        parse_calls += 1
+        return original_read_sheets(payload)
+
+    monkeypatch.setattr(PennWorldTableSource, "_read_sheets", staticmethod(counting_read_sheets))
+
+    source.search("rgdpo")
+    source.fetch(
+        SeriesRequest(
+            source=source.name,
+            series_id="rgdpo",
+            start_date=date(2020, 1, 1),
+            end_date=date(2021, 12, 31),
+            geography="CAN",
+        ),
+        cancel=lambda: None,
+    )
+
+    assert parse_calls == 1
+
+
 def test_malformed_pwt_workbook(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/:persistentId/"):

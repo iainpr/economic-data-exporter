@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from io import BytesIO
 from typing import Any
 
@@ -10,6 +11,7 @@ import pandas as pd
 
 from economic_data_exporter.exceptions import ParsingError
 from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceResult
+from economic_data_exporter.network import HttpClient
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.utils.validation import validate_geography, validate_series_id
 
@@ -23,7 +25,12 @@ class PennWorldTableSource(DataSource):
     workbook_pattern = re.compile(r"^pwt\d+\.xlsx$", re.IGNORECASE)
     canonical_workbook = "pwt110.xlsx"
 
-    def _official_workbook(self, *, ignore_cache: bool) -> tuple[bytes, str, bool, object]:
+    def __init__(self, client: HttpClient) -> None:
+        super().__init__(client)
+        self._parse_lock = threading.Lock()
+        self._parsed_sheets_cache: dict[int, tuple[pd.DataFrame, pd.DataFrame]] = {}
+
+    def _official_workbook(self, *, ignore_cache: bool) -> tuple[bytes, str, int, bool, object]:
         metadata_response = self.client.get(
             f"{self.dataverse_base}/api/datasets/:persistentId/",
             trusted_hosts=self.hosts,
@@ -62,7 +69,7 @@ class PennWorldTableSource(DataSource):
             ),
             use_cache=not ignore_cache,
         )
-        return download.content, filename, metadata_response.from_cache and download.from_cache, download
+        return download.content, filename, file_id, metadata_response.from_cache and download.from_cache, download
 
     @staticmethod
     def _read_sheets(content: bytes) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -75,6 +82,21 @@ class PennWorldTableSource(DataSource):
         except Exception as exc:
             raise ParsingError("Official PWT workbook could not be parsed.") from exc
         return data, legend
+
+    def _cached_sheets(
+        self, content: bytes, file_id: int, *, ignore_cache: bool
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        # Parsing the full official workbook through openpyxl is the dominant cost
+        # of every search/fetch call; memoize it per Dataverse file id so concurrent
+        # requests for the same release parse it once instead of N times.
+        with self._parse_lock:
+            if not ignore_cache:
+                cached = self._parsed_sheets_cache.get(file_id)
+                if cached is not None:
+                    return cached
+            parsed = self._read_sheets(content)
+            self._parsed_sheets_cache[file_id] = parsed
+            return parsed
 
     @staticmethod
     def _legend_map(legend: pd.DataFrame) -> dict[str, str]:
@@ -98,10 +120,9 @@ class PennWorldTableSource(DataSource):
         return mapping
 
     def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
-        content, filename, _, _ = self._official_workbook(
-            ignore_cache=bool((options or {}).get("ignore_cache"))
-        )
-        data, legend = self._read_sheets(content)
+        ignore_cache = bool((options or {}).get("ignore_cache"))
+        content, filename, file_id, _, _ = self._official_workbook(ignore_cache=ignore_cache)
+        data, legend = self._cached_sheets(content, file_id, ignore_cache=ignore_cache)
         definitions = self._legend_map(legend)
         excluded = {"countrycode", "country", "currency_unit", "year"}
         needle = query.casefold().strip()
@@ -133,11 +154,10 @@ class PennWorldTableSource(DataSource):
         variable = validate_series_id(request.series_id, source=self.name)
         geography = validate_geography(request.geography, required=True)
         cancel()
-        content, filename, from_cache, download = self._official_workbook(
-            ignore_cache=bool(request.options.get("ignore_cache"))
-        )
+        ignore_cache = bool(request.options.get("ignore_cache"))
+        content, filename, file_id, from_cache, download = self._official_workbook(ignore_cache=ignore_cache)
         cancel()
-        data, legend = self._read_sheets(content)
+        data, legend = self._cached_sheets(content, file_id, ignore_cache=ignore_cache)
         required = {"countrycode", "year", variable}
         missing = required - {str(column) for column in data.columns}
         if missing:
