@@ -46,10 +46,15 @@ def validate_series_id(value: str, *, source: str) -> str:
         raise ValidationError("Series or indicator ID is required.")
     if source == "Our World in Data":
         if not OWID_SLUG.fullmatch(cleaned):
-            raise ValidationError("OWID identifiers must be chart slugs containing lowercase letters, numbers, and hyphens.")
+            raise ValidationError(
+                "OWID identifiers must be chart slugs containing lowercase letters, "
+                "numbers, and hyphens."
+            )
     elif source == "Penn World Table":
         if not PWT_VARIABLE.fullmatch(cleaned):
-            raise ValidationError("PWT variable names may contain letters, numbers, and underscores.")
+            raise ValidationError(
+                "PWT variable names may contain letters, numbers, and underscores."
+            )
     elif not SAFE_ID.fullmatch(cleaned):
         raise ValidationError("Series ID contains unsupported characters.")
     return cleaned
@@ -89,7 +94,9 @@ def validate_observations(frame: pd.DataFrame, *, max_records: int) -> list[str]
         raise ValidationError("One or more observation dates could not be parsed.")
     duplicates = frame.duplicated(subset=["date", "series_id", "geography"], keep=False)
     if duplicates.any():
-        raise ValidationError("Provider response contains duplicate observations for the same date and series.")
+        raise ValidationError(
+            "Provider response contains duplicate observations for the same date and series."
+        )
     ordered = frame.sort_values("date")["date"]
     if not ordered.is_monotonic_increasing:
         warnings.append("Observations were sorted by date during normalization.")

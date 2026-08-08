@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
 
 import pandas as pd
 
@@ -24,7 +24,9 @@ class DataSource(ABC):
         self.client = client
 
     @abstractmethod
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         """Search or validate provider metadata without downloading observations."""
 
     @abstractmethod
@@ -43,7 +45,7 @@ def finish_result(
     from_cache: bool = False,
     warnings: list[str] | None = None,
 ) -> SourceResult:
-    timestamp = retrieved_at or datetime.now(timezone.utc)
+    timestamp = retrieved_at or datetime.now(UTC)
     frame = pd.DataFrame({"date": dates, "value": values})
     frame["source"] = metadata.source
     frame["series_id"] = metadata.series_id

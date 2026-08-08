@@ -18,7 +18,9 @@ class WorldBankSource(DataSource):
     base_url = "https://api.worldbank.org/v2"
     hosts = ("api.worldbank.org",)
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         needle = query.casefold().strip()
         results: list[SeriesMetadata] = []
         page = 1
@@ -49,7 +51,8 @@ class WorldBankSource(DataSource):
                         units=str(item.get("unit") or ""),
                         notes=notes,
                         source_url=f"https://data.worldbank.org/indicator/{indicator_id}",
-                        attribution="World Bank Indicators API; cite the named source organization where provided.",
+                        attribution="World Bank Indicators API; cite the named source "
+                        "organization where provided.",
                         license_text="World Bank Data terms and any dataset-specific terms apply.",
                         extra={"source": (item.get("source") or {}).get("value", "")},
                     )
@@ -108,8 +111,9 @@ class WorldBankSource(DataSource):
             geography=str(country.get("value") or geography),
             frequency=str(meta.get("unit") or "Annual/indicator-defined"),
             units=str(meta.get("unit") or ""),
-            source_url=response.url if 'response' in locals() else source_url,
-            attribution="World Bank Indicators API; cite the named source organization where provided.",
+            source_url=response.url if "response" in locals() else source_url,
+            attribution="World Bank Indicators API; cite the named source "
+            "organization where provided.",
             license_text="World Bank Data terms and any dataset-specific terms apply.",
         )
         dates: list[object] = []

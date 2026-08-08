@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import pandas as pd
 import pytest
@@ -20,7 +20,7 @@ def sample_request() -> SeriesRequest:
 
 @pytest.fixture
 def sample_result(sample_request: SeriesRequest) -> SourceResult:
-    retrieved = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+    retrieved = datetime(2026, 8, 5, 12, 0, tzinfo=UTC)
     metadata = SeriesMetadata(
         source="Bank of Canada",
         series_id="FXUSDCAD",

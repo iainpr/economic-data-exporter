@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
@@ -47,8 +45,8 @@ def test_wide_shape_rejects_duplicate_date_series_key(sample_result) -> None:
 
 
 def test_preview_missing_numeric_values_are_nan_not_string(sample_result):
-    from economic_data_exporter.services.preparation import prepare_export_data, preview_frame
     from economic_data_exporter.models import ExportFormatOptions
+    from economic_data_exporter.services.preparation import prepare_export_data, preview_frame
 
     result = sample_result
     result.data.loc[0, "value"] = float("nan")

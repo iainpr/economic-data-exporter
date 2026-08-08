@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-
 
 DATA_COLUMNS = [
     "date",
@@ -101,7 +100,7 @@ class SourceResult:
     request: SeriesRequest
     data: pd.DataFrame
     metadata: SeriesMetadata
-    retrieved_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    retrieved_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     warnings: list[str] = field(default_factory=list)
     from_cache: bool = False
     transformations: list[str] = field(default_factory=list)

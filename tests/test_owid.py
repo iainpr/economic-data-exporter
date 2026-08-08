@@ -48,9 +48,16 @@ def test_malformed_owid_csv(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith(".metadata.json"):
             return httpx.Response(200, json={"chart": {}, "columns": {}}, request=request)
-        return httpx.Response(200, text="a,b\n1,2\n", headers={"content-type": "text/csv"}, request=request)
+        return httpx.Response(
+            200, text="a,b\n1,2\n", headers={"content-type": "text/csv"}, request=request
+        )
 
     source = OwidSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
-    request = SeriesRequest(source=source.name, series_id="bad-chart", start_date=date(2020, 1, 1), end_date=date(2021, 1, 1))
+    request = SeriesRequest(
+        source=source.name,
+        series_id="bad-chart",
+        start_date=date(2020, 1, 1),
+        end_date=date(2021, 1, 1),
+    )
     with pytest.raises(ParsingError):
         source.fetch(request, cancel=lambda: None)

@@ -4,15 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterable
 from dataclasses import asdict
-from typing import Iterable
 
 from economic_data_exporter.models import ExportFormatOptions, SeriesRequest
 
 
-def run_fingerprint(
-    requests: Iterable[SeriesRequest], options: ExportFormatOptions
-) -> str:
+def run_fingerprint(requests: Iterable[SeriesRequest], options: ExportFormatOptions) -> str:
     """Return a stable identifier for the logical export request.
 
     The fingerprint intentionally excludes retrieval timestamps, cache state,
@@ -32,5 +30,7 @@ def run_fingerprint(
         ],
         "format_options": asdict(options),
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()[:16]

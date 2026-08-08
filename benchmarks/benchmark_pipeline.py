@@ -61,7 +61,7 @@ class MemorySampler:
         while not self._stop.wait(self.interval_seconds):
             self.peak_bytes = max(self.peak_bytes, current_rss_bytes() or 0)
 
-    def __enter__(self) -> "MemorySampler":
+    def __enter__(self) -> MemorySampler:
         self._thread.start()
         return self
 
@@ -146,7 +146,9 @@ def run(
         retrieval_seconds = time.perf_counter() - retrieval_started
 
         concat_started = time.perf_counter()
-        combined = pd.concat([result.normalized() for result in results], ignore_index=True, copy=False)
+        combined = pd.concat(
+            [result.normalized() for result in results], ignore_index=True, copy=False
+        )
         normalization_concat_seconds = time.perf_counter() - concat_started
 
         workbook_path = output_dir / f"benchmark_{run_label}.xlsx"
@@ -184,7 +186,9 @@ def run(
         "retrieval_and_per_series_normalization_seconds": round(retrieval_seconds, 4),
         "single_concat_seconds": round(normalization_concat_seconds, 4),
         "excel_export_and_validation_seconds": round(export_seconds, 4),
-        "total_pipeline_seconds": round(retrieval_seconds + normalization_concat_seconds + export_seconds, 4),
+        "total_pipeline_seconds": round(
+            retrieval_seconds + normalization_concat_seconds + export_seconds, 4
+        ),
         "baseline_rss_bytes": baseline_rss,
         "sampled_peak_rss_bytes": memory.peak_bytes,
         "sampled_incremental_peak_bytes": max(0, memory.peak_bytes - baseline_rss),
@@ -193,7 +197,8 @@ def run(
         "cpu_profile": stats_name or None,
         "workbook": workbook_path.name,
         "known_limits": [
-            "Fixture excludes real provider latency, throttling, server-side pagination, and compression variability.",
+            "Fixture excludes real provider latency, throttling, server-side pagination, "
+            "and compression variability.",
             "openpyxl workbook generation is expected to dominate CPU and memory for large jobs.",
             "Configured application-wide normalized-row limit is 500,000 rows.",
             "Excel permits at most 1,048,576 rows per worksheet including the header.",
@@ -209,7 +214,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--series", type=int, default=100)
     parser.add_argument("--observations", type=int, default=1_000)
     parser.add_argument("--profile", action="store_true")
-    parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent / "results")
+    parser.add_argument(
+        "--output-dir", type=Path, default=Path(__file__).resolve().parent / "results"
+    )
     return parser.parse_args()
 
 

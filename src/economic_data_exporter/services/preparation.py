@@ -5,8 +5,8 @@ from __future__ import annotations
 import pandas as pd
 
 from economic_data_exporter.exceptions import ExportError, ValidationError
-from economic_data_exporter.services.ingestion import assert_primary_key_unique
 from economic_data_exporter.models import DATA_COLUMNS, ExportFormatOptions, SourceResult
+from economic_data_exporter.services.ingestion import assert_primary_key_unique
 
 
 def _combined_raw_data(results: list[SourceResult]) -> pd.DataFrame:
@@ -60,13 +60,21 @@ def clean_combined_data(
         before = len(frame)
         frame = frame.drop_duplicates(keep="first").reset_index(drop=True)
         removed = before - len(frame)
-        transformations.append(f"Removed {removed:,} exact duplicate rows." if removed else "Checked for exact duplicate rows; none removed.")
+        transformations.append(
+            f"Removed {removed:,} exact duplicate rows."
+            if removed
+            else "Checked for exact duplicate rows; none removed."
+        )
 
     if drop_missing_values:
         before = len(frame)
         frame = frame.loc[frame["value"].notna()].copy()
         removed = before - len(frame)
-        transformations.append(f"Dropped {removed:,} rows with missing values." if removed else "Dropped rows with missing values; none were present.")
+        transformations.append(
+            f"Dropped {removed:,} rows with missing values."
+            if removed
+            else "Dropped rows with missing values; none were present."
+        )
     else:
         transformations.append("Missing values preserved explicitly.")
 
@@ -89,20 +97,26 @@ def shape_output(
     if options.output_shape == "long":
         export_columns = [column for column in options.columns if column in frame.columns]
         selected = frame[export_columns].copy()
-        transformations.append(f"Exported tidy long format with columns: {', '.join(export_columns)}.")
+        transformations.append(
+            f"Exported tidy long format with columns: {', '.join(export_columns)}."
+        )
         return selected, transformations
 
     keys = _series_key(frame)
-    duplicate_keys = frame.assign(_series_key=keys).duplicated(subset=["date", "_series_key"], keep=False)
+    duplicate_keys = frame.assign(_series_key=keys).duplicated(
+        subset=["date", "_series_key"], keep=False
+    )
     if duplicate_keys.any():
         raise ExportError(
-            "Wide output cannot represent multiple observations for the same date and source/series/geography key. "
-            "Use long format or narrow the selection."
+            "Wide output cannot represent multiple observations for the same date and "
+            "source/series/geography key. Use long format or narrow the selection."
         )
     wide_source = frame.assign(_series_key=keys)
     wide = wide_source.pivot(index="date", columns="_series_key", values="value").reset_index()
     wide.columns.name = None
-    transformations.append("Pivoted observations to wide format with one value column per source/series/geography key.")
+    transformations.append(
+        "Pivoted observations to wide format with one value column per source/series/geography key."
+    )
     return wide, transformations
 
 

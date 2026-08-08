@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from typing import Callable
 
 from economic_data_exporter.config import LIMITS
 from economic_data_exporter.exceptions import CancelledError, EconomicDataError
@@ -22,18 +22,20 @@ from economic_data_exporter.services.ingestion import assert_requests_unique
 from economic_data_exporter.sources.base import DataSource
 from economic_data_exporter.utils.redaction import redact_text
 from economic_data_exporter.utils.validation import (
+    GEOGRAPHY_REQUIRED_SOURCES,
     validate_date_range,
     validate_geography,
     validate_output_path,
     validate_series_id,
-    GEOGRAPHY_REQUIRED_SOURCES,
 )
 
 ProgressCallback = Callable[[int, int, str], None]
 
 
 class JobRunner:
-    def __init__(self, sources: dict[str, DataSource], *, max_workers: int = LIMITS.max_concurrency) -> None:
+    def __init__(
+        self, sources: dict[str, DataSource], *, max_workers: int = LIMITS.max_concurrency
+    ) -> None:
         self.sources = sources
         self.max_workers = max(1, min(max_workers, LIMITS.max_concurrency))
         self._cancelled = threading.Event()
@@ -82,7 +84,9 @@ class JobRunner:
         completed = 0
         aborted = False
 
-        with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="economic-data") as pool:
+        with ThreadPoolExecutor(
+            max_workers=self.max_workers, thread_name_prefix="economic-data"
+        ) as pool:
             futures: dict[Future[SourceResult], SeriesRequest] = {
                 pool.submit(self._fetch_one, request): request for request in requests
             }
@@ -136,7 +140,8 @@ class JobRunner:
         total_records = sum(len(result.data) for result in results)
         if total_records > LIMITS.max_records:
             raise EconomicDataError(
-                f"Combined result contains {total_records:,} records, above the configured {LIMITS.max_records:,}-record limit."
+                f"Combined result contains {total_records:,} records, above the configured "
+                f"{LIMITS.max_records:,}-record limit."
             )
         return FetchSummary(
             successful=results,
@@ -165,7 +170,9 @@ class JobRunner:
                 elapsed_seconds=fetch_summary.elapsed_seconds,
             )
         if progress:
-            progress(len(job.requests), len(job.requests) + 1, "Writing and validating Excel workbook")
+            progress(
+                len(job.requests), len(job.requests) + 1, "Writing and validating Excel workbook"
+            )
         path = export_workbook(
             output_path,
             fetch_summary.successful,

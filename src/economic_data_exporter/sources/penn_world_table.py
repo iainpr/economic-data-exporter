@@ -11,7 +11,7 @@ import pandas as pd
 
 from economic_data_exporter.exceptions import ParsingError
 from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceResult
-from economic_data_exporter.network import HttpClient
+from economic_data_exporter.network import FetchResponse, HttpClient
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.utils.validation import validate_geography, validate_series_id
 
@@ -30,7 +30,9 @@ class PennWorldTableSource(DataSource):
         self._parse_lock = threading.Lock()
         self._parsed_sheets_cache: dict[int, tuple[pd.DataFrame, pd.DataFrame]] = {}
 
-    def _official_workbook(self, *, ignore_cache: bool) -> tuple[bytes, str, int, bool, object]:
+    def _official_workbook(
+        self, *, ignore_cache: bool
+    ) -> tuple[bytes, str, int, bool, FetchResponse]:
         metadata_response = self.client.get(
             f"{self.dataverse_base}/api/datasets/:persistentId/",
             trusted_hosts=self.hosts,
@@ -44,15 +46,24 @@ class PennWorldTableSource(DataSource):
             candidates = [
                 entry["dataFile"]
                 for entry in files
-                if self.workbook_pattern.fullmatch(str(entry.get("label") or entry.get("dataFile", {}).get("filename", "")))
+                if self.workbook_pattern.fullmatch(
+                    str(entry.get("label") or entry.get("dataFile", {}).get("filename", ""))
+                )
             ]
-            canonical = [entry for entry in candidates if str(entry.get("filename", "")).casefold() == self.canonical_workbook]
+            canonical = [
+                entry
+                for entry in candidates
+                if str(entry.get("filename", "")).casefold() == self.canonical_workbook
+            ]
             if len(canonical) == 1:
                 file_info = canonical[0]
             elif len(candidates) == 1:
                 file_info = candidates[0]
             else:
-                raise ParsingError("Official PWT release does not expose one unambiguous main workbook; pwt110.xlsx was not uniquely found.")
+                raise ParsingError(
+                    "Official PWT release does not expose one unambiguous main workbook; "
+                    "pwt110.xlsx was not uniquely found."
+                )
             file_id = int(file_info["id"])
             filename = str(file_info["filename"])
         except (KeyError, TypeError, ValueError) as exc:
@@ -69,14 +80,25 @@ class PennWorldTableSource(DataSource):
             ),
             use_cache=not ignore_cache,
         )
-        return download.content, filename, file_id, metadata_response.from_cache and download.from_cache, download
+        return (
+            download.content,
+            filename,
+            file_id,
+            metadata_response.from_cache and download.from_cache,
+            download,
+        )
 
     @staticmethod
     def _read_sheets(content: bytes) -> tuple[pd.DataFrame, pd.DataFrame]:
         try:
             excel = pd.ExcelFile(BytesIO(content), engine="openpyxl")
-            data_name = next((name for name in excel.sheet_names if name.casefold() == "data"), excel.sheet_names[0])
-            legend_name = next((name for name in excel.sheet_names if "legend" in name.casefold()), "")
+            data_name = next(
+                (name for name in excel.sheet_names if name.casefold() == "data"),
+                excel.sheet_names[0],
+            )
+            legend_name = next(
+                (name for name in excel.sheet_names if "legend" in name.casefold()), ""
+            )
             data = pd.read_excel(excel, sheet_name=data_name)
             legend = pd.read_excel(excel, sheet_name=legend_name) if legend_name else pd.DataFrame()
         except Exception as exc:
@@ -104,11 +126,19 @@ class PennWorldTableSource(DataSource):
             return {}
         columns = {str(column).casefold(): str(column) for column in legend.columns}
         variable_column = next(
-            (original for folded, original in columns.items() if "variable" in folded and "name" in folded),
+            (
+                original
+                for folded, original in columns.items()
+                if "variable" in folded and "name" in folded
+            ),
             str(legend.columns[0]),
         )
         description_column = next(
-            (original for folded, original in columns.items() if "definition" in folded or "description" in folded),
+            (
+                original
+                for folded, original in columns.items()
+                if "definition" in folded or "description" in folded
+            ),
             str(legend.columns[min(1, len(legend.columns) - 1)]),
         )
         mapping: dict[str, str] = {}
@@ -119,7 +149,9 @@ class PennWorldTableSource(DataSource):
                 mapping[key] = "" if value.lower() == "nan" else value
         return mapping
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         ignore_cache = bool((options or {}).get("ignore_cache"))
         content, filename, file_id, _, _ = self._official_workbook(ignore_cache=ignore_cache)
         data, legend = self._cached_sheets(content, file_id, ignore_cache=ignore_cache)
@@ -143,7 +175,8 @@ class PennWorldTableSource(DataSource):
                     notes=f"Imported from official {filename} release workbook.",
                     source_url=self.dataset_page,
                     attribution="Groningen Growth and Development Centre, Penn World Table 11.0.",
-                    license_text="CC BY 4.0; cite the PWT 11.0 dataset as instructed by GGDC/Dataverse.",
+                    license_text="CC BY 4.0; cite the PWT 11.0 dataset as instructed "
+                    "by GGDC/Dataverse.",
                 )
             )
             if len(results) >= 100:
@@ -155,13 +188,17 @@ class PennWorldTableSource(DataSource):
         geography = validate_geography(request.geography, required=True)
         cancel()
         ignore_cache = bool(request.options.get("ignore_cache"))
-        content, filename, file_id, from_cache, download = self._official_workbook(ignore_cache=ignore_cache)
+        content, filename, file_id, from_cache, download = self._official_workbook(
+            ignore_cache=ignore_cache
+        )
         cancel()
         data, legend = self._cached_sheets(content, file_id, ignore_cache=ignore_cache)
         required = {"countrycode", "year", variable}
         missing = required - {str(column) for column in data.columns}
         if missing:
-            raise ParsingError(f"PWT workbook does not contain required columns: {', '.join(sorted(missing))}.")
+            raise ParsingError(
+                f"PWT workbook does not contain required columns: {', '.join(sorted(missing))}."
+            )
         selected = data[
             (data["countrycode"].astype(str).str.upper() == geography)
             & (pd.to_numeric(data["year"], errors="coerce") >= request.start_date.year)
@@ -178,7 +215,8 @@ class PennWorldTableSource(DataSource):
             geography=country_name or geography,
             frequency="Annual",
             units="See PWT variable definition",
-            notes=f"Raw observations imported from official {filename}; no transformation or resampling applied.",
+            notes=f"Raw observations imported from official {filename}; no "
+            "transformation or resampling applied.",
             source_url=self.dataset_page,
             attribution="Groningen Growth and Development Centre, Penn World Table 11.0.",
             license_text="CC BY 4.0; cite the PWT 11.0 dataset as instructed by GGDC/Dataverse.",
@@ -186,7 +224,9 @@ class PennWorldTableSource(DataSource):
         return finish_result(
             request=request,
             metadata=metadata,
-            dates=pd.to_datetime(selected["year"].astype("Int64").astype(str) + "-01-01", errors="coerce"),
+            dates=pd.to_datetime(
+                selected["year"].astype("Int64").astype(str) + "-01-01", errors="coerce"
+            ),
             values=selected[variable],
             geographies=country_name or geography,
             retrieved_at=download.retrieved_at,

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import keyring
 import pandas as pd
-from PySide6.QtCore import QDate, QThread, Qt, QTimer
+from PySide6.QtCore import QDate, Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
-    QScrollArea,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
@@ -34,12 +33,14 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
+from economic_data_exporter.gui.worker import ExportWorker, FetchWorker, SearchWorker
 from economic_data_exporter.models import (
     DATA_COLUMNS,
     DEFAULT_EXPORT_COLUMNS,
@@ -52,18 +53,21 @@ from economic_data_exporter.models import (
 )
 from economic_data_exporter.network import HttpClient
 from economic_data_exporter.services.job import JobRunner
-from economic_data_exporter.services.preparation import clean_combined_data, preview_frame, shape_output
+from economic_data_exporter.services.preparation import (
+    clean_combined_data,
+    preview_frame,
+    shape_output,
+)
 from economic_data_exporter.sources.fred import KEYRING_SERVICE, KEYRING_USER
 from economic_data_exporter.sources.registry import build_sources
 from economic_data_exporter.utils.validation import (
-    split_series_ids,
     GEOGRAPHY_REQUIRED_SOURCES,
+    split_series_ids,
     validate_date_range,
     validate_geography,
     validate_output_path,
     validate_series_id,
 )
-from economic_data_exporter.gui.worker import ExportWorker, FetchWorker, SearchWorker
 
 APP_STYLESHEET = """
 QMainWindow, QWidget {
@@ -311,7 +315,9 @@ class MetadataDialog(QDialog):
         self.setWindowTitle("Select metadata results")
         self.resize(900, 520)
         layout = QVBoxLayout(self)
-        intro = QLabel("Select one or more results. Each selected result can be added as an export request.")
+        intro = QLabel(
+            "Select one or more results. Each selected result can be added as an export request."
+        )
         intro.setWordWrap(True)
         layout.addWidget(intro)
 
@@ -339,7 +345,9 @@ class MetadataDialog(QDialog):
         selection_buttons.addStretch(1)
         layout.addLayout(selection_buttons)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -378,8 +386,9 @@ class PreviewCleanDialog(QDialog):
 
         root = QVBoxLayout(self)
         summary = QLabel(
-            f"Retrieved {len(results)} successful series. {len(failures)} independent series failed. "
-            "The raw provider observations remain unchanged; the options below create a derived export view."
+            f"Retrieved {len(results)} successful series. {len(failures)} independent series "
+            "failed. The raw provider observations remain unchanged; the options below "
+            "create a derived export view."
         )
         summary.setWordWrap(True)
         root.addWidget(summary)
@@ -388,7 +397,9 @@ class PreviewCleanDialog(QDialog):
         form = QFormLayout(controls)
 
         self.profile_combo = QComboBox()
-        self.profile_combo.addItems(["Clean research", "Full provenance", "Minimal observations", "Custom"])
+        self.profile_combo.addItems(
+            ["Clean research", "Full provenance", "Minimal observations", "Custom"]
+        )
         self.profile_combo.setCurrentText("Clean research")
         self.profile_combo.currentTextChanged.connect(self._profile_changed)
         form.addRow("Output profile", self.profile_combo)
@@ -490,7 +501,9 @@ class PreviewCleanDialog(QDialog):
         return "wide" if self.shape_combo.currentIndex() == 1 else "long"
 
     def _options(self) -> ExportFormatOptions:
-        columns = tuple(column for column in DATA_COLUMNS if self._column_checks[column].isChecked())
+        columns = tuple(
+            column for column in DATA_COLUMNS if self._column_checks[column].isChecked()
+        )
         return ExportFormatOptions(
             output_shape=self._shape(),
             columns=columns,
@@ -512,7 +525,11 @@ class PreviewCleanDialog(QDialog):
         self._refresh_timer.stop()
         try:
             options = self._options()
-            cache_key = (options.remove_duplicate_rows, options.drop_missing_values, options.sort_by_date)
+            cache_key = (
+                options.remove_duplicate_rows,
+                options.drop_missing_values,
+                options.sort_by_date,
+            )
             if self._clean_cache_key != cache_key or self._clean_cache is None:
                 self._clean_cache = clean_combined_data(
                     self.results,
@@ -525,8 +542,8 @@ class PreviewCleanDialog(QDialog):
             data, transformations = shape_output(cleaned, options, clean_transformations)
             preview = preview_frame(data, max_rows=options.preview_rows)
             self.preview_label.setText(
-                f"Export shape: {options.output_shape}. {len(data):,} rows × {len(data.columns):,} columns. "
-                f"Showing first {len(preview):,} rows. "
+                f"Export shape: {options.output_shape}. {len(data):,} rows × "
+                f"{len(data.columns):,} columns. Showing first {len(preview):,} rows. "
                 f"{transformations[-1]}"
             )
             self._populate_table(preview)
@@ -536,7 +553,7 @@ class PreviewCleanDialog(QDialog):
             self.table.setRowCount(0)
             self.table.setColumnCount(0)
 
-    def _populate_table(self, frame) -> None:
+    def _populate_table(self, frame: pd.DataFrame) -> None:
         self.table.clear()
         self.table.setRowCount(len(frame))
         self.table.setColumnCount(len(frame.columns))
@@ -689,10 +706,23 @@ class MainWindow(QMainWindow):
         footer = QHBoxLayout()
         settings_button = QPushButton("⚙  Settings")
         settings_button.setObjectName("sideButton")
-        settings_button.clicked.connect(lambda: QMessageBox.information(self, "Settings", "Settings are currently managed through the export controls and OS credential store."))
+        settings_button.clicked.connect(
+            lambda: QMessageBox.information(
+                self,
+                "Settings",
+                "Settings are currently managed through the export controls and "
+                "OS credential store.",
+            )
+        )
         about_button = QPushButton("ⓘ  About")
         about_button.setObjectName("sideButton")
-        about_button.clicked.connect(lambda: QMessageBox.information(self, "Economic Data Exporter", "Research-oriented economic data retrieval and Excel export.\nVersion 0.6.0"))
+        about_button.clicked.connect(
+            lambda: QMessageBox.information(
+                self,
+                "Economic Data Exporter",
+                "Research-oriented economic data retrieval and Excel export.\nVersion 0.6.0",
+            )
+        )
         footer.addWidget(settings_button)
         footer.addWidget(about_button)
         side.addLayout(footer)
@@ -720,7 +750,10 @@ class MainWindow(QMainWindow):
         self.status_label.setObjectName("statusPill")
         heading_row.addWidget(self.status_label)
         top_layout.addLayout(heading_row)
-        sub = QLabel("Choose sources, add indicators, review the queue, then retrieve and shape the data before Excel export.")
+        sub = QLabel(
+            "Choose sources, add indicators, review the queue, then retrieve and shape the "
+            "data before Excel export."
+        )
         sub.setStyleSheet("color:#667085;")
         top_layout.addWidget(sub)
         steps = QHBoxLayout()
@@ -740,12 +773,17 @@ class MainWindow(QMainWindow):
         form.setVerticalSpacing(12)
 
         self.series_edit = QPlainTextEdit()
-        self.series_edit.setPlaceholderText("Paste multiple IDs — one per line, comma-separated, or semicolon-separated\nExample: FSR2018JUNEC10AS2, bcpien, FXUSDCAD")
+        self.series_edit.setPlaceholderText(
+            "Paste multiple IDs — one per line, comma-separated, or semicolon-separated\n"
+            "Example: FSR2018JUNEC10AS2, bcpien, FXUSDCAD"
+        )
         self.series_edit.setMinimumHeight(86)
         ids_row = QHBoxLayout()
         ids_row.addWidget(self.series_edit, 1)
         self.search_button = QPushButton("Search metadata")
-        self.search_button.setToolTip("Search the selected providers for matching series/indicator metadata")
+        self.search_button.setToolTip(
+            "Search the selected providers for matching series/indicator metadata"
+        )
         self.search_button.clicked.connect(self._search_metadata)
         ids_row.addWidget(self.search_button)
         form.addRow("Indicators / series", ids_row)
@@ -800,7 +838,9 @@ class MainWindow(QMainWindow):
         queue_layout.addLayout(queue_heading)
 
         self.table = QTableWidget(0, 8)
-        self.table.setHorizontalHeaderLabels(["Source", "Series ID", "Name", "Geography", "Start", "End", "Frequency", "Status"])
+        self.table.setHorizontalHeaderLabels(
+            ["Source", "Series ID", "Name", "Geography", "Start", "End", "Frequency", "Status"]
+        )
         self.table.setMinimumHeight(230)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -834,7 +874,10 @@ class MainWindow(QMainWindow):
         output_row.addWidget(self.output_edit, 1)
         output_row.addWidget(browse_button)
         output_layout.addLayout(output_row)
-        hint = QLabel("The final Excel file is written atomically after retrieval and preview/clean configuration are validated.")
+        hint = QLabel(
+            "The final Excel file is written atomically after retrieval and preview/clean "
+            "configuration are validated."
+        )
         hint.setStyleSheet("color:#667085;font-size:11px;")
         output_layout.addWidget(hint)
         action_row = QHBoxLayout()
@@ -886,7 +929,7 @@ class MainWindow(QMainWindow):
     def _selected_sources(self) -> list[str]:
         return [name for name, check in self.source_checks.items() if check.isChecked()]
 
-    def _source_selection_changed(self, *_args) -> None:
+    def _source_selection_changed(self, *_args: object) -> None:
         selected = self._selected_sources()
         self.frequency_edit.setEnabled("FRED" in selected)
         self.fred_key_edit.setEnabled("FRED" in selected)
@@ -913,7 +956,9 @@ class MainWindow(QMainWindow):
         # here only; _update_fred_key_status() below must stay a cheap, local read
         # since it runs on every source checkbox toggle.
         try:
-            self._keyring_has_fred_key = bool((keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip())
+            self._keyring_has_fred_key = bool(
+                (keyring.get_password(KEYRING_SERVICE, KEYRING_USER) or "").strip()
+            )
         except keyring.errors.KeyringError:
             self._keyring_has_fred_key = False
         self._update_fred_key_status()
@@ -927,7 +972,9 @@ class MainWindow(QMainWindow):
             states.append("saved in OS keyring")
         if self.fred_key_edit.text().strip():
             states.append("key entered in this session")
-        self.fred_key_status.setText("FRED credential status: " + (", ".join(states) if states else "not configured"))
+        self.fred_key_status.setText(
+            "FRED credential status: " + (", ".join(states) if states else "not configured")
+        )
 
     def _load_fred_key(self) -> None:
         try:
@@ -936,7 +983,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Credential error", f"Could not read the OS keyring: {exc}")
             return
         if not key:
-            QMessageBox.information(self, "No saved key", "No FRED API key is currently saved in the OS keyring.")
+            QMessageBox.information(
+                self, "No saved key", "No FRED API key is currently saved in the OS keyring."
+            )
             return
         self.fred_key_edit.setText(key)
         self._keyring_has_fred_key = True
@@ -945,12 +994,18 @@ class MainWindow(QMainWindow):
     def _save_fred_key(self) -> None:
         key = self.fred_key_edit.text().strip()
         if len(key) != 32 or not key.isalnum() or key.lower() != key:
-            QMessageBox.warning(self, "Invalid FRED key", "FRED API keys must be 32-character lowercase alphanumeric keys.")
+            QMessageBox.warning(
+                self,
+                "Invalid FRED key",
+                "FRED API keys must be 32-character lowercase alphanumeric keys.",
+            )
             return
         try:
             keyring.set_password(KEYRING_SERVICE, KEYRING_USER, key)
         except keyring.errors.KeyringError as exc:
-            QMessageBox.warning(self, "Credential error", f"Could not save the key to the OS keyring: {exc}")
+            QMessageBox.warning(
+                self, "Credential error", f"Could not save the key to the OS keyring: {exc}"
+            )
             return
         self._keyring_has_fred_key = True
         self._update_fred_key_status()
@@ -971,10 +1026,18 @@ class MainWindow(QMainWindow):
         sources = self._selected_sources()
         query = self.series_edit.toPlainText().strip()
         if not sources:
-            QMessageBox.warning(self, "No sources selected", "Select at least one data source before searching metadata.")
+            QMessageBox.warning(
+                self,
+                "No sources selected",
+                "Select at least one data source before searching metadata.",
+            )
             return
         if not query:
-            QMessageBox.warning(self, "Missing search", "Enter search text or an exact identifier before searching metadata.")
+            QMessageBox.warning(
+                self,
+                "Missing search",
+                "Enter search text or an exact identifier before searching metadata.",
+            )
             return
         self._set_busy(True, "Searching metadata")
         source_map = {name: self.sources[name] for name in sources}
@@ -996,7 +1059,9 @@ class MainWindow(QMainWindow):
     def _search_finished(self, results: list[SeriesMetadata]) -> None:
         self._set_busy(False, "Ready")
         if not results:
-            QMessageBox.information(self, "No results", "No matching metadata was returned from the selected sources.")
+            QMessageBox.information(
+                self, "No results", "No matching metadata was returned from the selected sources."
+            )
             return
         dialog = MetadataDialog(results, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -1037,7 +1102,9 @@ class MainWindow(QMainWindow):
     def _add_requests(self) -> None:
         sources = self._selected_sources()
         if not sources:
-            QMessageBox.warning(self, "No sources selected", "Select one or more data sources first.")
+            QMessageBox.warning(
+                self, "No sources selected", "Select one or more data sources first."
+            )
             return
         try:
             start = self._to_date(self.start_date)
@@ -1063,13 +1130,22 @@ class MainWindow(QMainWindow):
                         frequency=self.frequency_edit.text().strip() if source == "FRED" else "",
                         options=self._options_for_source(source),
                     )
-                    requests.append((request, self.metadata_names.get((source, valid_id), "Metadata retrieved during export")))
+                    requests.append(
+                        (
+                            request,
+                            self.metadata_names.get(
+                                (source, valid_id), "Metadata retrieved during export"
+                            ),
+                        )
+                    )
         except Exception as exc:
             QMessageBox.warning(self, "Validation error", str(exc))
             return
 
         added = sum(self._append_request(request, name) for request, name in requests)
-        self.status_label.setText(f"Added {added} new request(s) from {len(raw_ids)} ID(s) × {len(sources)} source(s)")
+        self.status_label.setText(
+            f"Added {added} new request(s) from {len(raw_ids)} ID(s) × {len(sources)} source(s)"
+        )
 
     def _append_request(self, request: SeriesRequest, name: str) -> bool:
         signature = (
@@ -1081,7 +1157,14 @@ class MainWindow(QMainWindow):
             request.frequency,
         )
         existing = {
-            (item.source, item.series_id, item.geography, item.start_date, item.end_date, item.frequency)
+            (
+                item.source,
+                item.series_id,
+                item.geography,
+                item.start_date,
+                item.end_date,
+                item.frequency,
+            )
             for item in self.requests
         }
         if signature in existing:
@@ -1186,7 +1269,9 @@ class MainWindow(QMainWindow):
         # no-data outcome. It must not open a blank preview window.
         empty_results = [result for result in summary.successful if result.data.empty]
         if empty_results:
-            summary.successful[:] = [result for result in summary.successful if not result.data.empty]
+            summary.successful[:] = [
+                result for result in summary.successful if not result.data.empty
+            ]
             summary.failures.extend(
                 FailureRecord(
                     source=result.request.source,
@@ -1202,7 +1287,9 @@ class MainWindow(QMainWindow):
         self._set_busy(False, "Ready for preview")
         self.cancel_button.setEnabled(False)
         if summary.cancelled:
-            QMessageBox.information(self, "Cancelled", "Retrieval was cancelled; no output workbook was created.")
+            QMessageBox.information(
+                self, "Cancelled", "Retrieval was cancelled; no output workbook was created."
+            )
             return
         if not summary.successful:
             details = "\n".join(
@@ -1211,14 +1298,17 @@ class MainWindow(QMainWindow):
             )
             message = (
                 "No observations were retrieved, so no preview or workbook was created.\n\n"
-                f"Failures ({len(summary.failures)}):\n{details or 'No failure details were returned.'}"
+                f"Failures ({len(summary.failures)}):\n"
+                f"{details or 'No failure details were returned.'}"
             )
             self.status_label.setText("No data retrieved")
             box = QMessageBox(self)
             box.setIcon(QMessageBox.Icon.Warning)
             box.setWindowTitle("No data retrieved")
             box.setText("No observations were retrieved.")
-            box.setInformativeText("The request finished, but there is no data available to preview or export.")
+            box.setInformativeText(
+                "The request finished, but there is no data available to preview or export."
+            )
             box.setDetailedText(message)
             box.exec()
             return
@@ -1229,7 +1319,9 @@ class MainWindow(QMainWindow):
             return
         self._start_export(output, summary, dialog.options())
 
-    def _start_export(self, output: Path, summary: FetchSummary, options: ExportFormatOptions) -> None:
+    def _start_export(
+        self, output: Path, summary: FetchSummary, options: ExportFormatOptions
+    ) -> None:
         self._set_busy(True, "Exporting cleaned Excel workbook")
         self.progress.setRange(0, 0)
         thread = QThread(self)
@@ -1264,7 +1356,9 @@ class MainWindow(QMainWindow):
                 "The workbook contains a README describing the export/cleaning choices.",
             )
         else:
-            QMessageBox.warning(self, "Export failed", f"No workbook was created. Failures: {len(summary.failures)}")
+            QMessageBox.warning(
+                self, "Export failed", f"No workbook was created. Failures: {len(summary.failures)}"
+            )
 
     def _operation_failed(self, message: str) -> None:
         self._set_busy(False, "Error")
@@ -1305,7 +1399,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(
                     self,
                     "Operation in progress",
-                    "A background operation is still finishing. Please wait a moment and close again.",
+                    "A background operation is still finishing. Please wait a moment and "
+                    "close again.",
                 )
                 return
         self.client.close()
@@ -1313,7 +1408,9 @@ class MainWindow(QMainWindow):
 
 
 def run_gui() -> int:
-    app = QApplication.instance() or QApplication([])
+    app = QApplication.instance()
+    if not isinstance(app, QApplication):
+        app = QApplication([])
     app.setStyle("Fusion")
     app.setStyleSheet(APP_STYLESHEET)
     window = MainWindow()

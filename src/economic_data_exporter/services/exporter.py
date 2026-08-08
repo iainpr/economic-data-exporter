@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 import re
 import tempfile
+from collections.abc import Callable
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable
 
 import pandas as pd
 from openpyxl import load_workbook
+from openpyxl.worksheet.worksheet import Worksheet
 
 from economic_data_exporter import __version__
 from economic_data_exporter.exceptions import ExportError
@@ -43,17 +44,27 @@ def safe_sheet_name(name: str, existing: set[str]) -> str:
     return candidate
 
 
-def _format_options_rows(options: ExportFormatOptions, transformations: list[str]) -> list[dict[str, object]]:
+def _format_options_rows(
+    options: ExportFormatOptions, transformations: list[str]
+) -> list[dict[str, object]]:
     return [
         {"section": "Output", "field": "output_shape", "value": options.output_shape},
         {"section": "Output", "field": "selected_columns", "value": ", ".join(options.columns)},
         {"section": "Output", "field": "drop_missing_values", "value": options.drop_missing_values},
-        {"section": "Output", "field": "remove_duplicate_rows", "value": options.remove_duplicate_rows},
+        {
+            "section": "Output",
+            "field": "remove_duplicate_rows",
+            "value": options.remove_duplicate_rows,
+        },
         {"section": "Output", "field": "sort_by_date", "value": options.sort_by_date},
         {"section": "Output", "field": "freeze_header", "value": options.freeze_header},
         {"section": "Output", "field": "autofilter", "value": options.autofilter},
         {"section": "Output", "field": "auto_width", "value": options.auto_width},
-        {"section": "Output", "field": "include_series_sheets", "value": options.include_series_sheets},
+        {
+            "section": "Output",
+            "field": "include_series_sheets",
+            "value": options.include_series_sheets,
+        },
         {"section": "Output", "field": "transformations", "value": " | ".join(transformations)},
     ]
 
@@ -72,28 +83,36 @@ def _readme_rows(
         {
             "section": "Export",
             "field": "export_timestamp_utc",
-            "value": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "value": datetime.now(UTC).replace(microsecond=0).isoformat(),
         },
         {"section": "Export", "field": "successful_series", "value": len(results)},
         {"section": "Export", "field": "failed_series", "value": len(failures)},
         {"section": "Export", "field": "exported_rows", "value": exported_rows},
         {"section": "Export", "field": "run_id", "value": run_id},
-        {"section": "Export", "field": "idempotency", "value": "Repeated runs atomically replace the target workbook; no append/duplicate behavior is used."},
+        {
+            "section": "Export",
+            "field": "idempotency",
+            "value": "Repeated runs atomically replace the target workbook; no "
+            "append/duplicate behavior is used.",
+        },
         *(_format_options_rows(options, transformations)),
         {
             "section": "Integrity",
             "field": "raw_data_policy",
-            "value": "Provider observations are canonical; preview/clean/shape operations create a derived export view and do not mutate raw observations.",
+            "value": "Provider observations are canonical; preview/clean/shape operations "
+            "create a derived export view and do not mutate raw observations.",
         },
         {
             "section": "Integrity",
             "field": "excel_formula_safety",
-            "value": "Text beginning with =, +, -, or @ is prefixed with an apostrophe to prevent formula execution.",
+            "value": "Text beginning with =, +, -, or @ is prefixed with an apostrophe "
+            "to prevent formula execution.",
         },
         {
             "section": "FRED",
             "field": "required_notice",
-            "value": "This product uses the FRED API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.",
+            "value": "This product uses the FRED API but is not endorsed or certified by "
+            "the Federal Reserve Bank of St. Louis.",
         },
     ]
     for index, result in enumerate(results, start=1):
@@ -118,19 +137,23 @@ def _readme_rows(
             "license": metadata.license_text,
             "transformations": " | ".join(result.transformations) or "None",
         }
-        rows.extend({"section": prefix, "field": key, "value": value} for key, value in entries.items())
+        rows.extend(
+            {"section": prefix, "field": key, "value": value} for key, value in entries.items()
+        )
     return pd.DataFrame(rows, columns=["section", "field", "value"])
 
 
 def _safe_data_for_excel(data: pd.DataFrame) -> pd.DataFrame:
     frame = data.copy()
     for column in frame.columns:
-        if pd.api.types.is_object_dtype(frame[column]) or pd.api.types.is_string_dtype(frame[column]):
+        if pd.api.types.is_object_dtype(frame[column]) or pd.api.types.is_string_dtype(
+            frame[column]
+        ):
             frame[column] = frame[column].map(safe_excel_text)
     return frame
 
 
-def _style_sheet(ws, *, freeze_header: bool, autofilter: bool, auto_width: bool) -> None:
+def _style_sheet(ws: Worksheet, *, freeze_header: bool, autofilter: bool, auto_width: bool) -> None:
     if freeze_header and ws.max_row >= 1:
         ws.freeze_panes = "A2"
     if autofilter and ws.max_row >= 1 and ws.max_column >= 1:
@@ -176,9 +199,14 @@ def export_workbook(
         progress("Preparing cleaned export data")
     data, transformations = prepare_export_data(results, options)
     if len(data) + 1 > 1_048_576:
-        raise ExportError("Data exceeds Excel's 1,048,576-row worksheet limit; narrow the selection.")
+        raise ExportError(
+            "Data exceeds Excel's 1,048,576-row worksheet limit; narrow the selection."
+        )
     if len(data.columns) > 16_384:
-        raise ExportError("Data exceeds Excel's 16,384-column worksheet limit; narrow the selection or use long format.")
+        raise ExportError(
+            "Data exceeds Excel's 16,384-column worksheet limit; narrow the selection "
+            "or use long format."
+        )
 
     run_id = run_fingerprint([result.request for result in results], options)
     readme = _readme_rows(
@@ -189,7 +217,9 @@ def export_workbook(
         exported_rows=len(data),
         run_id=run_id,
     ).map(safe_excel_text)
-    failures_frame = pd.DataFrame([asdict(record) for record in failures]) if failures else pd.DataFrame()
+    failures_frame = (
+        pd.DataFrame([asdict(record) for record in failures]) if failures else pd.DataFrame()
+    )
     if not failures_frame.empty:
         failures_frame = failures_frame.map(safe_excel_text)
 
@@ -211,7 +241,9 @@ def export_workbook(
                 for result in results:
                     subset = _safe_data_for_excel(result.normalized())
                     subset["date"] = pd.to_datetime(subset["date"], errors="coerce")
-                    name = safe_sheet_name(f"{result.metadata.source}_{result.metadata.series_id}", used)
+                    name = safe_sheet_name(
+                        f"{result.metadata.source}_{result.metadata.series_id}", used
+                    )
                     subset.to_excel(writer, sheet_name=name, index=False)
 
             # Style the in-memory workbook before the writer closes. This avoids

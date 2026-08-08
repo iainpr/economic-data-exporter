@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from PySide6.QtCore import QObject, Signal, Slot
 
-from economic_data_exporter.models import ExportFormatOptions, ExportSummary, FetchSummary, SeriesMetadata
+from economic_data_exporter.models import (
+    ExportFormatOptions,
+    ExportSummary,
+    FailureRecord,
+    FetchSummary,
+    SeriesMetadata,
+    SeriesRequest,
+    SourceResult,
+)
 from economic_data_exporter.services.exporter import export_workbook
 from economic_data_exporter.services.job import JobRunner
 from economic_data_exporter.sources.base import DataSource
@@ -14,7 +24,9 @@ class SearchWorker(QObject):
     finished = Signal(list)
     failed = Signal(str)
 
-    def __init__(self, sources: dict[str, DataSource], query: str, options: dict[str, object]) -> None:
+    def __init__(
+        self, sources: dict[str, DataSource], query: str, options: dict[str, object]
+    ) -> None:
         super().__init__()
         self.sources = sources
         self.query = query
@@ -31,7 +43,9 @@ class SearchWorker(QObject):
                 except Exception as exc:
                     errors.append(f"{name}: {exc}")
             if not results and errors:
-                raise RuntimeError("Metadata search failed for all selected sources. " + " | ".join(errors))
+                raise RuntimeError(
+                    "Metadata search failed for all selected sources. " + " | ".join(errors)
+                )
             self.finished.emit(results)
         except Exception as exc:
             self.failed.emit(str(exc))
@@ -42,7 +56,9 @@ class FetchWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, runner: JobRunner, requests, *, fail_fast: bool) -> None:
+    def __init__(
+        self, runner: JobRunner, requests: list[SeriesRequest], *, fail_fast: bool
+    ) -> None:
         super().__init__()
         self.runner = runner
         self.requests = requests
@@ -65,7 +81,13 @@ class ExportWorker(QObject):
     finished = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, output_path, successful, failures, options: ExportFormatOptions) -> None:
+    def __init__(
+        self,
+        output_path: Path,
+        successful: list[SourceResult],
+        failures: list[FailureRecord],
+        options: ExportFormatOptions,
+    ) -> None:
         super().__init__()
         self.output_path = output_path
         self.successful = successful

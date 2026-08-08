@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
-import json
-import threading
 import random
+import threading
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Iterable
 from urllib.parse import urlsplit
 
 import httpx
@@ -22,8 +22,8 @@ from economic_data_exporter.exceptions import (
     AuthenticationError,
     NetworkError,
     RateLimitError,
-    SourceUnavailableError,
     SourceNotFoundError,
+    SourceUnavailableError,
 )
 from economic_data_exporter.utils.redaction import redact_url
 
@@ -80,7 +80,7 @@ class HttpClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "HttpClient":
+    def __enter__(self) -> HttpClient:
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -107,7 +107,7 @@ class HttpClient:
         canonical = str(httpx.URL(url, params=params))
         if json_payload is not None:
             canonical += "|" + json.dumps(json_payload, sort_keys=True, default=str)
-        digest = hashlib.sha256(f"{method}:{canonical}".encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(f"{method}:{canonical}".encode()).hexdigest()
         return self.cache_dir / f"{digest}.bin", self.cache_dir / f"{digest}.json"
 
     def _read_cache(
@@ -123,7 +123,7 @@ class HttpClient:
         try:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
             stored_at = datetime.fromisoformat(meta["stored_at"])
-            age = (datetime.now(timezone.utc) - stored_at).total_seconds()
+            age = (datetime.now(UTC) - stored_at).total_seconds()
             if age > self.limits.cache_ttl_seconds:
                 return None
             return FetchResponse(
@@ -144,7 +144,9 @@ class HttpClient:
         params: dict[str, object] | None,
         json_payload: object | None,
     ) -> None:
-        body_path, meta_path = self._cache_paths(method, response.url.split("?", 1)[0], params, json_payload)
+        body_path, meta_path = self._cache_paths(
+            method, response.url.split("?", 1)[0], params, json_payload
+        )
         unique = f".{os.getpid()}.{threading.get_ident()}.tmp"
         body_tmp = body_path.with_name(body_path.name + unique)
         meta_tmp = meta_path.with_name(meta_path.name + unique)
@@ -183,7 +185,11 @@ class HttpClient:
         self._prune_cache()
 
     def _prune_cache(self) -> None:
-        files = [path for path in self.cache_dir.iterdir() if path.is_file() and not path.name.endswith(".tmp")]
+        files = [
+            path
+            for path in self.cache_dir.iterdir()
+            if path.is_file() and not path.name.endswith(".tmp")
+        ]
         total = sum(path.stat().st_size for path in files)
         if total <= self.limits.max_cache_bytes:
             return
@@ -252,7 +258,10 @@ class HttpClient:
         self._validate_url(url, trusted_hosts)
         request_path = urlsplit(url).path
         started = time.perf_counter()
-        if use_cache and (cached := self._read_cache(method, url, params, json_payload)) is not None:
+        if (
+            use_cache
+            and (cached := self._read_cache(method, url, params, json_payload)) is not None
+        ):
             LOGGER.info(
                 "%s cache_hit host=%s path=%s bytes=%d",
                 method,
@@ -266,7 +275,11 @@ class HttpClient:
         last_error: Exception | None = None
         for attempt in range(self.limits.max_retries + 1):
             try:
-                with self._client.stream(method, url, params=params, json=json_payload) as response:
+                # httpx's QueryParams stub is narrower than the dict[str, object] this
+                # client accepts from adapters (to allow any JSON-serializable value).
+                with self._client.stream(
+                    method, url, params=params, json=json_payload  # type: ignore[arg-type]
+                ) as response:
                     if response.is_redirect:
                         raise NetworkError("Unexpected redirect was refused.")
                     if response.status_code in {401, 403}:
@@ -288,9 +301,7 @@ class HttpClient:
                         )
                         self._backoff(
                             attempt,
-                            float(retry_after)
-                            if retry_after and retry_after.isdigit()
-                            else None,
+                            float(retry_after) if retry_after and retry_after.isdigit() else None,
                         )
                         continue
                     if response.status_code in {408, 500, 502, 503, 504}:
@@ -309,9 +320,7 @@ class HttpClient:
                         self._backoff(attempt)
                         continue
                     if response.status_code < 200 or response.status_code >= 300:
-                        raise NetworkError(
-                            f"Provider returned HTTP {response.status_code}."
-                        )
+                        raise NetworkError(f"Provider returned HTTP {response.status_code}.")
 
                     content_type = response.headers.get("Content-Type", "").lower()
                     if expected_content_types and not any(
@@ -335,14 +344,12 @@ class HttpClient:
                         status_code=response.status_code,
                         headers=dict(response.headers),
                         content=content,
-                        retrieved_at=datetime.now(timezone.utc),
+                        retrieved_at=datetime.now(UTC),
                     )
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
                 last_error = exc
                 if attempt >= self.limits.max_retries:
-                    raise NetworkError(
-                        f"Network request failed: {exc.__class__.__name__}"
-                    ) from exc
+                    raise NetworkError(f"Network request failed: {exc.__class__.__name__}") from exc
                 LOGGER.warning(
                     "%s retry network_error host=%s path=%s attempt=%d",
                     method,

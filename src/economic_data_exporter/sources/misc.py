@@ -8,7 +8,7 @@ from io import StringIO
 import pandas as pd
 
 from economic_data_exporter.exceptions import ParsingError
-from economic_data_exporter.models import SeriesMetadata
+from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceResult
 from economic_data_exporter.network import HttpClient
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.sources.sdmx import SDMXSource
@@ -21,7 +21,9 @@ class StatisticsCanadaSource(DataSource):
     hosts = ("www150.statcan.gc.ca",)
     source_url = "https://www.statcan.gc.ca/en/developers/wds"
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         q = query.strip().lstrip("Vv")
         if not q.isdigit():
             return []
@@ -45,7 +47,7 @@ class StatisticsCanadaSource(DataSource):
             )
         ]
 
-    def fetch(self, request, *, cancel: CancelCheck):
+    def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         sid = validate_series_id(request.series_id, source=self.name)
         vector = sid.lstrip("Vv")
         if not vector.isdigit():
@@ -64,7 +66,9 @@ class StatisticsCanadaSource(DataSource):
         payload = response.json()
         objects = payload.get("object", []) if isinstance(payload, dict) else []
         if not objects:
-            raise ParsingError("Statistics Canada returned no observations for the requested vector and period.")
+            raise ParsingError(
+                "Statistics Canada returned no observations for the requested vector and period."
+            )
         obj = objects[0] if isinstance(objects, list) else objects
         points = obj.get("vectorDataPoint", [])
         if not points:
@@ -125,8 +129,12 @@ class IMFSource(DataSource):
             self._catalogue = indicators
             return indicators
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
-        indicators = self._indicator_catalogue(ignore_cache=bool((options or {}).get("ignore_cache")))
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
+        indicators = self._indicator_catalogue(
+            ignore_cache=bool((options or {}).get("ignore_cache"))
+        )
         q = query.casefold().strip()
         out: list[SeriesMetadata] = []
         for code, info in indicators.items():
@@ -147,11 +155,13 @@ class IMFSource(DataSource):
                 break
         return out
 
-    def fetch(self, request, *, cancel: CancelCheck):
+    def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         indicator = validate_series_id(request.series_id, source=self.name)
         geo = request.geography.strip().upper()
         if not geo:
-            raise ValueError("IMF DataMapper retrieval requires a country, region, or group code in Geography.")
+            raise ValueError(
+                "IMF DataMapper retrieval requires a country, region, or group code in Geography."
+            )
         cancel()
         ignore_cache = bool(request.options.get("ignore_cache"))
         response = self.client.get(
@@ -201,7 +211,9 @@ class ILOStatSource(DataSource):
     hosts = ("rplumber.ilo.org",)
     source_url = "https://ilostat.ilo.org/data/"
 
-    def search(self, query: str, *, options=None):
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         code = query.strip()
         if not code:
             return []
@@ -228,9 +240,9 @@ class ILOStatSource(DataSource):
             )
         ]
 
-    def fetch(self, request, *, cancel: CancelCheck):
+    def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         code = validate_series_id(request.series_id, source=self.name)
-        params = {
+        params: dict[str, object] = {
             "id": code,
             "lang": "en",
             "type": "label",
@@ -274,7 +286,7 @@ class ILOStatSource(DataSource):
             metadata=metadata,
             dates=pd.to_datetime(frame["time"].astype(str), errors="coerce"),
             values=frame["obs_value"],
-            geographies=frame["ref_area"] if "ref_area" in frame else request.geography,
+            geographies=frame.get("ref_area", request.geography),
             retrieved_at=response.retrieved_at,
             from_cache=response.from_cache,
         )
@@ -286,7 +298,9 @@ class FAOSTATSource(DataSource):
     hosts = ("faostatservices.fao.org",)
     source_url = "https://www.fao.org/faostat/en/"
 
-    def search(self, query: str, *, options=None):
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         code = query.strip().upper()
         return (
             [
@@ -303,9 +317,10 @@ class FAOSTATSource(DataSource):
             else []
         )
 
-    def fetch(self, request, *, cancel: CancelCheck):
+    def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         raise ValueError(
-            "FAOSTAT retrieval is intentionally not enabled in 0.6.0 until the official API query/authentication contract is fully verified."
+            "FAOSTAT retrieval is intentionally not enabled in 0.6.0 until the official "
+            "API query/authentication contract is fully verified."
         )
 
 

@@ -10,8 +10,8 @@ from economic_data_exporter.config import LIMITS
 from economic_data_exporter.exceptions import ParsingError, SourceNotFoundError
 from economic_data_exporter.models import SeriesMetadata, SeriesRequest, SourceResult
 from economic_data_exporter.services.ingestion import canonicalize_observations
-from economic_data_exporter.utils.validation import validate_observations
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
+from economic_data_exporter.utils.validation import validate_observations
 
 
 class BankOfCanadaSource(DataSource):
@@ -19,7 +19,9 @@ class BankOfCanadaSource(DataSource):
     base_url = "https://www.bankofcanada.ca/valet"
     hosts = ("www.bankofcanada.ca",)
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         """Search both Valet series and series groups."""
         options = options or {}
         needle = query.casefold().strip()
@@ -181,7 +183,9 @@ class BankOfCanadaSource(DataSource):
                         "series_id": str(series_id),
                         "series_name": str(detail.get("label") or series_id),
                         "geography": "Canada",
-                        "frequency": str(detail.get("dimension", {}).get("name") or "Provider frequency"),
+                        "frequency": str(
+                            detail.get("dimension", {}).get("name") or "Provider frequency"
+                        ),
                         "units": str(detail.get("unit") or ""),
                         "retrieved_at": response.retrieved_at.replace(microsecond=0).isoformat(),
                         "source_url": response.url,
@@ -201,12 +205,28 @@ class BankOfCanadaSource(DataSource):
         )
         frame = pd.DataFrame(rows)
         if frame.empty:
-            frame = pd.DataFrame(columns=["date", "value", "source", "series_id", "series_name", "geography", "frequency", "units", "retrieved_at", "source_url"])
+            frame = pd.DataFrame(
+                columns=[
+                    "date",
+                    "value",
+                    "source",
+                    "series_id",
+                    "series_name",
+                    "geography",
+                    "frequency",
+                    "units",
+                    "retrieved_at",
+                    "source_url",
+                ]
+            )
         frame = canonicalize_observations(frame, source=self.name)
         frame.sort_values(["date", "series_id", "geography"], inplace=True, kind="stable")
         frame.reset_index(drop=True, inplace=True)
         warnings = validate_observations(frame, max_records=LIMITS.max_records)
-        warnings.append(f"Expanded Bank of Canada series group {request.series_id!r} into {metadata.extra['series_count']:,} series.")
+        warnings.append(
+            f"Expanded Bank of Canada series group {request.series_id!r} into "
+            f"{metadata.extra['series_count']:,} series."
+        )
         return SourceResult(
             request=request,
             data=frame,
@@ -222,4 +242,3 @@ class BankOfCanadaSource(DataSource):
             year, quarter = value.upper().split("Q", 1)
             return f"{int(year)}-{(int(quarter) - 1) * 3 + 1:02d}-01"
         return value
-

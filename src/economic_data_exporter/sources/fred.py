@@ -41,11 +41,18 @@ class FredSource(DataSource):
             return supplied
         return load_fred_key()
 
-    def search(self, query: str, *, options: dict[str, object] | None = None) -> list[SeriesMetadata]:
+    def search(
+        self, query: str, *, options: dict[str, object] | None = None
+    ) -> list[SeriesMetadata]:
         response = self.client.get(
             f"{self.base_url}/series/search",
             trusted_hosts=self.hosts,
-            params={"api_key": self._key(options), "file_type": "json", "search_text": query, "limit": 100},
+            params={
+                "api_key": self._key(options),
+                "file_type": "json",
+                "search_text": query,
+                "limit": 100,
+            },
             expected_content_types=("json",),
             use_cache=not bool((options or {}).get("ignore_cache")),
         )
@@ -63,8 +70,10 @@ class FredSource(DataSource):
                 units=str(item.get("units") or ""),
                 notes=str(item.get("notes") or ""),
                 source_url=f"https://fred.stlouisfed.org/series/{item['id']}",
-                attribution="Federal Reserve Bank of St. Louis FRED API; underlying series may have separate rights.",
-                license_text="FRED API Terms of Use; inspect series notes for third-party copyright restrictions.",
+                attribution="Federal Reserve Bank of St. Louis FRED API; underlying series "
+                "may have separate rights.",
+                license_text="FRED API Terms of Use; inspect series notes for "
+                "third-party copyright restrictions.",
                 extra={"seasonal_adjustment": item.get("seasonal_adjustment", "")},
             )
             for item in items
@@ -73,7 +82,11 @@ class FredSource(DataSource):
     def fetch(self, request: SeriesRequest, *, cancel: CancelCheck) -> SourceResult:
         cancel()
         api_key = self._key(request.options)
-        common = {"api_key": api_key, "file_type": "json", "series_id": request.series_id}
+        common: dict[str, object] = {
+            "api_key": api_key,
+            "file_type": "json",
+            "series_id": request.series_id,
+        }
         meta_response = self.client.get(
             f"{self.base_url}/series",
             trusted_hosts=self.hosts,
@@ -115,17 +128,25 @@ class FredSource(DataSource):
             units=str(item.get("units") or ""),
             notes=str(item.get("notes") or ""),
             source_url=f"https://fred.stlouisfed.org/series/{request.series_id}",
-            attribution="Federal Reserve Bank of St. Louis FRED API; underlying series may have separate rights.",
-            license_text="FRED API Terms of Use; inspect series notes for third-party copyright restrictions.",
+            attribution="Federal Reserve Bank of St. Louis FRED API; underlying series "
+            "may have separate rights.",
+            license_text="FRED API Terms of Use; inspect series notes for "
+            "third-party copyright restrictions.",
         )
         warnings = []
         if "copyright" in metadata.notes.casefold():
-            warnings.append("FRED series notes indicate copyright restrictions; review provider terms before reuse.")
+            warnings.append(
+                "FRED series notes indicate copyright restrictions; review provider "
+                "terms before reuse."
+            )
         return finish_result(
             request=request,
             metadata=metadata,
             dates=pd.Series([row.get("date") for row in observations], dtype="object"),
-            values=pd.Series([None if row.get("value") == "." else row.get("value") for row in observations], dtype="object"),
+            values=pd.Series(
+                [None if row.get("value") == "." else row.get("value") for row in observations],
+                dtype="object",
+            ),
             geographies=request.geography,
             retrieved_at=obs_response.retrieved_at,
             from_cache=meta_response.from_cache and obs_response.from_cache,

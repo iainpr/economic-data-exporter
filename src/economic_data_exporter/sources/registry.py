@@ -6,17 +6,17 @@ from economic_data_exporter.network import HttpClient
 from economic_data_exporter.sources.bank_of_canada import BankOfCanadaSource
 from economic_data_exporter.sources.base import DataSource
 from economic_data_exporter.sources.fred import FredSource
-from economic_data_exporter.sources.owid import OwidSource
-from economic_data_exporter.sources.penn_world_table import PennWorldTableSource
-from economic_data_exporter.sources.world_bank import WorldBankSource
 from economic_data_exporter.sources.misc import (
     BISSource,
     FAOSTATSource,
-    IMFSource,
     ILOStatSource,
+    IMFSource,
     OECDSource,
     StatisticsCanadaSource,
 )
+from economic_data_exporter.sources.owid import OwidSource
+from economic_data_exporter.sources.penn_world_table import PennWorldTableSource
+from economic_data_exporter.sources.world_bank import WorldBankSource
 
 
 def build_sources(client: HttpClient) -> dict[str, DataSource]:

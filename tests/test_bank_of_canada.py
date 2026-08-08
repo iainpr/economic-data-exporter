@@ -33,7 +33,9 @@ def test_url_and_query_construction_and_normalization(tmp_path: Path) -> None:
             request=request,
         )
 
-    source = BankOfCanadaSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
+    source = BankOfCanadaSource(
+        HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    )
     request = SeriesRequest(
         source=source.name,
         series_id="FXUSDCAD",
@@ -44,7 +46,10 @@ def test_url_and_query_construction_and_normalization(tmp_path: Path) -> None:
     result = source.fetch(request, cancel=lambda: None)
     assert captured[0].url.path.endswith("/observations/FXUSDCAD/json")
     assert captured[0].url.params["start_date"] == "2020-01-01"
-    assert list(result.data["value"].astype(object)) == [1.3, pytest.approx(float("nan"), nan_ok=True)]
+    assert list(result.data["value"].astype(object)) == [
+        1.3,
+        pytest.approx(float("nan"), nan_ok=True),
+    ]
     assert "Provider missing values" in " ".join(result.warnings)
 
 
@@ -53,11 +58,18 @@ def test_malformed_json(tmp_path: Path) -> None:
         HttpClient(
             cache_dir=tmp_path,
             transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, content=b"not json", headers={"content-type": "application/json"}, request=request)
+                lambda request: httpx.Response(
+                    200,
+                    content=b"not json",
+                    headers={"content-type": "application/json"},
+                    request=request,
+                )
             ),
         )
     )
-    request = SeriesRequest(source=source.name, series_id="X", start_date=date(2020, 1, 1), end_date=date(2020, 1, 2))
+    request = SeriesRequest(
+        source=source.name, series_id="X", start_date=date(2020, 1, 1), end_date=date(2020, 1, 2)
+    )
     with pytest.raises(ParsingError):
         source.fetch(request, cancel=lambda: None)
 
@@ -86,7 +98,9 @@ def test_group_fallback_expands_multiple_series(tmp_path: Path) -> None:
             request=request,
         )
 
-    source = BankOfCanadaSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
+    source = BankOfCanadaSource(
+        HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    )
     request = SeriesRequest(
         source=source.name,
         series_id="GROUP",
@@ -108,11 +122,23 @@ def test_group_fallback_expands_multiple_series(tmp_path: Path) -> None:
 def test_search_includes_series_groups(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path.endswith("/lists/series/json"):
-            return httpx.Response(200, json={"series": {"FXUSDCAD": {"label": "USD/CAD", "description": "Exchange rate"}}}, request=request)
+            return httpx.Response(
+                200,
+                json={"series": {"FXUSDCAD": {"label": "USD/CAD", "description": "Exchange rate"}}},
+                request=request,
+            )
         assert request.url.path.endswith("/lists/groups/json")
-        return httpx.Response(200, json={"groups": {"MY_GROUP": {"label": "My group", "description": "Group description"}}}, request=request)
+        return httpx.Response(
+            200,
+            json={
+                "groups": {"MY_GROUP": {"label": "My group", "description": "Group description"}}
+            },
+            request=request,
+        )
 
-    source = BankOfCanadaSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
+    source = BankOfCanadaSource(
+        HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    )
     results = source.search("MY_GROUP", options={"ignore_cache": True})
     assert len(results) == 1
     assert results[0].series_id == "MY_GROUP"

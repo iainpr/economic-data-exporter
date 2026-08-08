@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -27,7 +27,7 @@ def test_formula_injection_guarded_on_stringdtype_columns(tmp_path: Path, sample
     apostrophe guard silently does nothing for these columns.
     """
 
-    retrieved = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+    retrieved = datetime(2026, 8, 5, 12, 0, tzinfo=UTC)
     raw = pd.DataFrame(
         {
             "date": ["2020-01-01"],
@@ -53,7 +53,9 @@ def test_formula_injection_guarded_on_stringdtype_columns(tmp_path: Path, sample
         units="CAD",
         source_url="https://example.com",
     )
-    result = SourceResult(request=sample_request, data=data, metadata=metadata, retrieved_at=retrieved)
+    result = SourceResult(
+        request=sample_request, data=data, metadata=metadata, retrieved_at=retrieved
+    )
 
     output = tmp_path / "injection.xlsx"
     path = export_workbook(output, [result], [])

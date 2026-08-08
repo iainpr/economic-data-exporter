@@ -23,7 +23,14 @@ def test_ingestion_standardizes_columns_strings_and_nulls() -> None:
         }
     )
     out = canonicalize_observations(frame, source="Bank of Canada")
-    assert list(out.columns) == ["series_name", "value", "geography", "series_id", "source", "data_source"]
+    assert list(out.columns) == [
+        "series_name",
+        "value",
+        "geography",
+        "series_id",
+        "source",
+        "data_source",
+    ]
     assert pd.isna(out.loc[0, "value"])
     assert out.loc[0, "series_name"] == "Some Indicator"
     assert out.loc[0, "geography"] == "CA"

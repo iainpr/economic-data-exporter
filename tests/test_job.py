@@ -18,7 +18,9 @@ class FakeSource(DataSource):
         cancel()
         if request.series_id == "BAD":
             raise ValueError("bad series")
-        metadata = SeriesMetadata(source="Fake", series_id=request.series_id, name=request.series_id)
+        metadata = SeriesMetadata(
+            source="Fake", series_id=request.series_id, name=request.series_id
+        )
         data = pd.DataFrame(
             {
                 "date": pd.to_datetime(["2020-01-01"]),

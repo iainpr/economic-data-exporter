@@ -50,8 +50,17 @@ def test_official_dataverse_download_and_filter(tmp_path: Path) -> None:
                     "data": {
                         "latestVersion": {
                             "files": [
-                                {"label": "pwt110_capital_detail.xlsx", "dataFile": {"id": 111, "filename": "pwt110_capital_detail.xlsx"}},
-                                {"label": "pwt110_na_data.xlsx", "dataFile": {"id": 112, "filename": "pwt110_na_data.xlsx"}},
+                                {
+                                    "label": "pwt110_capital_detail.xlsx",
+                                    "dataFile": {
+                                        "id": 111,
+                                        "filename": "pwt110_capital_detail.xlsx",
+                                    },
+                                },
+                                {
+                                    "label": "pwt110_na_data.xlsx",
+                                    "dataFile": {"id": 112, "filename": "pwt110_na_data.xlsx"},
+                                },
                                 {
                                     "label": "pwt110.xlsx",
                                     "dataFile": {"id": 123, "filename": "pwt110.xlsx"},
@@ -94,7 +103,9 @@ def test_official_dataverse_download_and_filter(tmp_path: Path) -> None:
     assert result.metadata.source_url == "https://doi.org/10.34894/FABVLR"
 
 
-def test_workbook_parsed_once_across_search_and_fetch_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_workbook_parsed_once_across_search_and_fetch_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     content = workbook_bytes()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -104,7 +115,12 @@ def test_workbook_parsed_once_across_search_and_fetch_calls(tmp_path: Path, monk
                 json={
                     "data": {
                         "latestVersion": {
-                            "files": [{"label": "pwt110.xlsx", "dataFile": {"id": 123, "filename": "pwt110.xlsx"}}]
+                            "files": [
+                                {
+                                    "label": "pwt110.xlsx",
+                                    "dataFile": {"id": 123, "filename": "pwt110.xlsx"},
+                                }
+                            ]
                         }
                     }
                 },
@@ -113,11 +129,15 @@ def test_workbook_parsed_once_across_search_and_fetch_calls(tmp_path: Path, monk
         return httpx.Response(
             200,
             content=content,
-            headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+            headers={
+                "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            },
             request=request,
         )
 
-    source = PennWorldTableSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
+    source = PennWorldTableSource(
+        HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler))
+    )
 
     parse_calls = 0
     original_read_sheets = PennWorldTableSource._read_sheets

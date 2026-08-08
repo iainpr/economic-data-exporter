@@ -9,7 +9,7 @@ here.
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 import pandas as pd
 
@@ -18,7 +18,9 @@ from economic_data_exporter.models import PRIMARY_KEY_COLUMNS
 
 # These are intentionally applied before numeric coercion. They cover common
 # statistical-provider sentinels without treating zero as missing.
-NULL_TOKENS = frozenset({"", "na", "n/a", "nan", "null", "none", "nil", "-99", "-999", "-9999", "..", "."})
+NULL_TOKENS = frozenset(
+    {"", "na", "n/a", "nan", "null", "none", "nil", "-99", "-999", "-9999", "..", "."}
+)
 
 # These columns are identifiers/control fields. Lowercasing them can change
 # their meaning or make a provider request impossible (for example a
@@ -43,7 +45,9 @@ def standardize_nulls(frame: pd.DataFrame) -> pd.DataFrame:
 
     out = frame.copy()
     for column in out.columns:
-        if not (pd.api.types.is_object_dtype(out[column]) or pd.api.types.is_string_dtype(out[column])):
+        if not (
+            pd.api.types.is_object_dtype(out[column]) or pd.api.types.is_string_dtype(out[column])
+        ):
             continue
         values = out[column].astype("string")
         normalized = values.str.strip().str.casefold()

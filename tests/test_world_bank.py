@@ -21,7 +21,9 @@ def test_complete_bounded_pagination(tmp_path: Path) -> None:
             "value": 10 + page,
             "unit": "people",
         }
-        return httpx.Response(200, json=[{"page": page, "pages": 2, "total": 2}, [item]], request=request)
+        return httpx.Response(
+            200, json=[{"page": page, "pages": 2, "total": 2}, [item]], request=request
+        )
 
     source = WorldBankSource(HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(handler)))
     request = SeriesRequest(

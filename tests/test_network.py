@@ -29,7 +29,10 @@ def test_retries_transient_status(tmp_path: Path) -> None:
         return httpx.Response(200, json={"ok": True}, request=request)
 
     client = HttpClient(
-        limits=limits(), cache_dir=tmp_path, transport=httpx.MockTransport(handler), sleep=lambda _: None
+        limits=limits(),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _: None,
     )
     response = client.get(
         "https://example.org/data", trusted_hosts=("example.org",), expected_content_types=("json",)
@@ -43,7 +46,10 @@ def test_timeout_failure_is_bounded(tmp_path: Path) -> None:
         raise httpx.ReadTimeout("timed out", request=request)
 
     client = HttpClient(
-        limits=limits(1), cache_dir=tmp_path, transport=httpx.MockTransport(handler), sleep=lambda _: None
+        limits=limits(1),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _: None,
     )
     with pytest.raises(NetworkError):
         client.get("https://example.org/data", trusted_hosts=("example.org",))
@@ -61,7 +67,9 @@ def test_rate_limit_response(tmp_path: Path) -> None:
 
 
 def test_rejects_untrusted_host(tmp_path: Path) -> None:
-    client = HttpClient(cache_dir=tmp_path, transport=httpx.MockTransport(lambda request: httpx.Response(200)))
+    client = HttpClient(
+        cache_dir=tmp_path, transport=httpx.MockTransport(lambda request: httpx.Response(200))
+    )
     with pytest.raises(NetworkError):
         client.get("https://evil.example/data", trusted_hosts=("example.org",))
 
@@ -132,19 +140,30 @@ def test_post_json_uses_cache_on_repeat_payload(tmp_path: Path) -> None:
         return httpx.Response(200, json={"ok": True}, request=request)
 
     client = HttpClient(
-        limits=limits(0), cache_dir=tmp_path, transport=httpx.MockTransport(handler), sleep=lambda _: None
+        limits=limits(0),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _: None,
     )
-    first = client.post_json("https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1})
-    second = client.post_json("https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1})
+    first = client.post_json(
+        "https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1}
+    )
+    second = client.post_json(
+        "https://example.org/data", trusted_hosts=("example.org",), payload={"vectorId": 1}
+    )
     assert calls == 1
     assert first.json() == second.json() == {"ok": True}
 
 
-def test_cache_is_not_pruned_on_every_small_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_cache_is_not_pruned_on_every_small_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     client = HttpClient(
         limits=limits(0),
         cache_dir=tmp_path,
-        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}, request=request)),
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={"ok": True}, request=request)
+        ),
     )
     prune_calls = 0
     original_prune = client._prune_cache
