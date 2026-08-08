@@ -140,6 +140,28 @@ def test_post_json_uses_cache_on_repeat_payload(tmp_path: Path) -> None:
     assert first.json() == second.json() == {"ok": True}
 
 
+def test_cache_is_not_pruned_on_every_small_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    client = HttpClient(
+        limits=limits(0),
+        cache_dir=tmp_path,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json={"ok": True}, request=request)),
+    )
+    prune_calls = 0
+    original_prune = client._prune_cache
+
+    def counting_prune() -> None:
+        nonlocal prune_calls
+        prune_calls += 1
+        original_prune()
+
+    monkeypatch.setattr(client, "_prune_cache", counting_prune)
+
+    for index in range(20):
+        client.get(f"https://example.org/data/{index}", trusted_hosts=("example.org",))
+
+    assert prune_calls == 0
+
+
 def test_cached_metadata_redacts_secret_url(tmp_path: Path) -> None:
     secret = "abcdefghijklmnopqrstuvwxyz123456"
     client = HttpClient(

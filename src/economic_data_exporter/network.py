@@ -62,6 +62,8 @@ class HttpClient:
         self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._sleep = sleep
+        self._prune_lock = threading.Lock()
+        self._bytes_written_since_prune = 0
         self._client = httpx.Client(
             timeout=httpx.Timeout(
                 connect=limits.connect_timeout_seconds,
@@ -162,11 +164,23 @@ class HttpClient:
             )
             os.replace(body_tmp, body_path)
             os.replace(meta_tmp, meta_path)
-            self._prune_cache()
+            self._maybe_prune_cache(len(response.content))
         except OSError:
             body_tmp.unlink(missing_ok=True)
             meta_tmp.unlink(missing_ok=True)
             LOGGER.warning("Cache write failed; continuing without cached copy")
+
+    def _maybe_prune_cache(self, written_bytes: int) -> None:
+        # A full prune does an iterdir()+stat() scan of the cache directory. Doing
+        # that after every write is O(files) per request; only rescan once enough
+        # has been written in-process to plausibly matter.
+        prune_check_interval = max(1024 * 1024, self.limits.max_cache_bytes // 20)
+        with self._prune_lock:
+            self._bytes_written_since_prune += written_bytes
+            if self._bytes_written_since_prune < prune_check_interval:
+                return
+            self._bytes_written_since_prune = 0
+        self._prune_cache()
 
     def _prune_cache(self) -> None:
         files = [path for path in self.cache_dir.iterdir() if path.is_file() and not path.name.endswith(".tmp")]
