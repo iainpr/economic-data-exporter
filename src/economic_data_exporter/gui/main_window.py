@@ -8,7 +8,7 @@ from pathlib import Path
 
 import keyring
 import pandas as pd
-from PySide6.QtCore import QDate, QThread, Qt
+from PySide6.QtCore import QDate, QThread, Qt, QTimer
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -52,7 +52,7 @@ from economic_data_exporter.models import (
 )
 from economic_data_exporter.network import HttpClient
 from economic_data_exporter.services.job import JobRunner
-from economic_data_exporter.services.preparation import prepare_export_data, preview_frame
+from economic_data_exporter.services.preparation import clean_combined_data, preview_frame, shape_output
 from economic_data_exporter.sources.fred import KEYRING_SERVICE, KEYRING_USER
 from economic_data_exporter.sources.registry import build_sources
 from economic_data_exporter.utils.validation import (
@@ -369,6 +369,12 @@ class PreviewCleanDialog(QDialog):
         self.resize(1260, 780)
         self._column_checks: dict[str, QCheckBox] = {}
         self._updating_profile = False
+        self._clean_cache_key: tuple[bool, bool, bool] | None = None
+        self._clean_cache: tuple[pd.DataFrame, list[str]] | None = None
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(200)
+        self._refresh_timer.timeout.connect(self._perform_refresh)
 
         root = QVBoxLayout(self)
         summary = QLabel(
@@ -389,7 +395,7 @@ class PreviewCleanDialog(QDialog):
 
         self.shape_combo = QComboBox()
         self.shape_combo.addItems(["Long / tidy", "Wide / one column per series"])
-        self.shape_combo.currentTextChanged.connect(self._refresh_preview)
+        self.shape_combo.currentTextChanged.connect(self._schedule_refresh)
         form.addRow("Output shape", self.shape_combo)
 
         cleaning = QHBoxLayout()
@@ -408,7 +414,7 @@ class PreviewCleanDialog(QDialog):
         columns_layout = QGridLayout(columns_box)
         for index, column in enumerate(DATA_COLUMNS):
             check = QCheckBox(column)
-            check.stateChanged.connect(self._refresh_preview)
+            check.stateChanged.connect(self._schedule_refresh)
             self._column_checks[column] = check
             columns_layout.addWidget(check, index // 3, index % 3)
         form.addRow(columns_box)
@@ -433,7 +439,7 @@ class PreviewCleanDialog(QDialog):
         preview_header = QHBoxLayout()
         self.preview_label = QLabel("Preview not generated")
         refresh_button = QPushButton("Refresh preview")
-        refresh_button.clicked.connect(self._refresh_preview)
+        refresh_button.clicked.connect(self._perform_refresh)
         preview_header.addWidget(self.preview_label, 1)
         preview_header.addWidget(refresh_button)
         root.addLayout(preview_header)
@@ -454,7 +460,7 @@ class PreviewCleanDialog(QDialog):
         root.addWidget(buttons)
 
         self._apply_profile("Clean research")
-        self._refresh_preview()
+        self._perform_refresh()
 
     def _apply_profile(self, profile: str) -> None:
         profiles = {
@@ -478,7 +484,7 @@ class PreviewCleanDialog(QDialog):
                 self._apply_profile(profile)
         finally:
             self._updating_profile = False
-        self._refresh_preview()
+        self._schedule_refresh()
 
     def _shape(self) -> str:
         return "wide" if self.shape_combo.currentIndex() == 1 else "long"
@@ -497,10 +503,26 @@ class PreviewCleanDialog(QDialog):
             include_series_sheets=self.series_sheets.isChecked(),
         )
 
-    def _refresh_preview(self) -> None:
+    def _schedule_refresh(self) -> None:
+        # Debounce rapid successive toggles (e.g. clicking "Select all" on the
+        # column checkboxes) into a single recompute.
+        self._refresh_timer.start()
+
+    def _perform_refresh(self) -> None:
+        self._refresh_timer.stop()
         try:
             options = self._options()
-            data, transformations = prepare_export_data(self.results, options)
+            cache_key = (options.remove_duplicate_rows, options.drop_missing_values, options.sort_by_date)
+            if self._clean_cache_key != cache_key or self._clean_cache is None:
+                self._clean_cache = clean_combined_data(
+                    self.results,
+                    remove_duplicate_rows=options.remove_duplicate_rows,
+                    drop_missing_values=options.drop_missing_values,
+                    sort_by_date=options.sort_by_date,
+                )
+                self._clean_cache_key = cache_key
+            cleaned, clean_transformations = self._clean_cache
+            data, transformations = shape_output(cleaned, options, clean_transformations)
             preview = preview_frame(data, max_rows=options.preview_rows)
             self.preview_label.setText(
                 f"Export shape: {options.output_shape}. {len(data):,} rows × {len(data.columns):,} columns. "
@@ -523,7 +545,6 @@ class PreviewCleanDialog(QDialog):
             for column_index, value in enumerate(row):
                 text = "" if value is None or pd.isna(value) else str(value)
                 self.table.setItem(row_index, column_index, QTableWidgetItem(text))
-        self.table.resizeColumnsToContents()
 
     def _accept(self) -> None:
         try:

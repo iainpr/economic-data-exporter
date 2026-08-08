@@ -32,11 +32,20 @@ def _series_key(frame: pd.DataFrame) -> pd.Series:
     )
 
 
-def prepare_export_data(
+def clean_combined_data(
     results: list[SourceResult],
-    options: ExportFormatOptions,
+    *,
+    remove_duplicate_rows: bool,
+    drop_missing_values: bool,
+    sort_by_date: bool,
 ) -> tuple[pd.DataFrame, list[str]]:
-    """Return a derived export frame and an auditable list of transformations."""
+    """Combine and clean raw results, independent of output shape/column selection.
+
+    This is the expensive half of export preparation (concat, dedupe, sort). It is
+    split out from column/shape selection so callers that only change which
+    columns or shape to display (e.g. the preview dialog) can reuse this result
+    instead of recomputing it.
+    """
 
     frame = _combined_raw_data(results)
     transformations: list[str] = []
@@ -47,13 +56,13 @@ def prepare_export_data(
     if frame["date"].isna().any():
         raise ExportError("Export preparation found invalid observation dates.")
 
-    if options.remove_duplicate_rows:
+    if remove_duplicate_rows:
         before = len(frame)
         frame = frame.drop_duplicates(keep="first").reset_index(drop=True)
         removed = before - len(frame)
         transformations.append(f"Removed {removed:,} exact duplicate rows." if removed else "Checked for exact duplicate rows; none removed.")
 
-    if options.drop_missing_values:
+    if drop_missing_values:
         before = len(frame)
         frame = frame.loc[frame["value"].notna()].copy()
         removed = before - len(frame)
@@ -61,16 +70,27 @@ def prepare_export_data(
     else:
         transformations.append("Missing values preserved explicitly.")
 
-    if options.sort_by_date:
+    if sort_by_date:
         frame.sort_values(["date", "source", "series_id", "geography"], inplace=True, kind="stable")
         frame.reset_index(drop=True, inplace=True)
         transformations.append("Sorted observations by date, source, series ID, and geography.")
 
+    return frame, transformations
+
+
+def shape_output(
+    frame: pd.DataFrame,
+    options: ExportFormatOptions,
+    transformations: list[str],
+) -> tuple[pd.DataFrame, list[str]]:
+    """Select columns (long) or pivot (wide) a cleaned frame from clean_combined_data."""
+
+    transformations = list(transformations)
     if options.output_shape == "long":
         export_columns = [column for column in options.columns if column in frame.columns]
-        frame = frame[export_columns].copy()
+        selected = frame[export_columns].copy()
         transformations.append(f"Exported tidy long format with columns: {', '.join(export_columns)}.")
-        return frame, transformations
+        return selected, transformations
 
     keys = _series_key(frame)
     duplicate_keys = frame.assign(_series_key=keys).duplicated(subset=["date", "_series_key"], keep=False)
@@ -84,6 +104,21 @@ def prepare_export_data(
     wide.columns.name = None
     transformations.append("Pivoted observations to wide format with one value column per source/series/geography key.")
     return wide, transformations
+
+
+def prepare_export_data(
+    results: list[SourceResult],
+    options: ExportFormatOptions,
+) -> tuple[pd.DataFrame, list[str]]:
+    """Return a derived export frame and an auditable list of transformations."""
+
+    frame, transformations = clean_combined_data(
+        results,
+        remove_duplicate_rows=options.remove_duplicate_rows,
+        drop_missing_values=options.drop_missing_values,
+        sort_by_date=options.sort_by_date,
+    )
+    return shape_output(frame, options, transformations)
 
 
 def preview_frame(data: pd.DataFrame, *, max_rows: int) -> pd.DataFrame:
