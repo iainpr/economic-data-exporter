@@ -80,6 +80,7 @@ class JobRunner:
         results: list[SourceResult] = []
         failures: list[FailureRecord] = []
         completed = 0
+        aborted = False
 
         with ThreadPoolExecutor(max_workers=self.max_workers, thread_name_prefix="economic-data") as pool:
             futures: dict[Future[SourceResult], SeriesRequest] = {
@@ -112,6 +113,7 @@ class JobRunner:
                     )
                     message = f"Failed {request.source} {request.series_id}"
                     if fail_fast:
+                        aborted = True
                         self._cancelled.set()
                         for pending in futures:
                             pending.cancel()
@@ -119,6 +121,16 @@ class JobRunner:
                 completed += 1
                 if progress:
                     progress(completed, total, message)
+
+        if aborted:
+            # fail_fast stopped the job on a series failure, not a user cancellation.
+            # The caller still needs to know which requests failed and why.
+            return FetchSummary(
+                successful=results,
+                failures=failures,
+                cancelled=False,
+                elapsed_seconds=time.perf_counter() - started,
+            )
 
         self._check_cancelled()
         total_records = sum(len(result.data) for result in results)

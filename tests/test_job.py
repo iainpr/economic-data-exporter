@@ -47,3 +47,17 @@ def test_partial_failure_exports_success(tmp_path: Path) -> None:
     assert summary.output_path is not None and summary.output_path.exists()
     assert len(summary.successful) == 1
     assert len(summary.failures) == 1
+
+
+def test_fail_fast_returns_failure_details_instead_of_raising(tmp_path: Path) -> None:
+    source = FakeSource(client=None)  # type: ignore[arg-type]
+    runner = JobRunner({"Fake": source}, max_workers=1)
+    requests = [SeriesRequest("Fake", "BAD", date(2020, 1, 1), date(2020, 1, 1))]
+
+    summary = runner.fetch(requests, fail_fast=True)
+
+    assert summary.cancelled is False
+    assert summary.successful == []
+    assert len(summary.failures) == 1
+    assert summary.failures[0].series_id == "BAD"
+    assert summary.failures[0].message == "bad series"
