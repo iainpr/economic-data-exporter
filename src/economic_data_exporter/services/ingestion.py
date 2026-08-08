@@ -62,7 +62,7 @@ def standardize_strings(frame: pd.DataFrame) -> pd.DataFrame:
         if column in UPPERCASE_CODE_COLUMNS:
             out[column] = out[column].astype("string").str.strip().str.upper()
         elif pd.api.types.is_object_dtype(out[column]) or pd.api.types.is_string_dtype(out[column]):
-            out[column] = out[column].astype("string").str.strip().str.casefold()
+            out[column] = out[column].astype("string").str.strip()
     return out
 
 

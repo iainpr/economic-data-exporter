@@ -54,7 +54,7 @@ Official references:
 
 Version 0.6.0 establishes a strict ingestion boundary. Every provider result is standardized immediately after parsing and before it can enter the combined export dataset.
 
-- Canonical column names are lowercase and deterministic. Case-sensitive provider identifiers and URLs are preserved; controlled geography codes are normalized to uppercase.
+- Canonical column names are lowercase and deterministic. Human-readable text values (series names, units, frequency, notes) are only whitespace-trimmed, preserving the provider's original casing; controlled geography codes are normalized to uppercase.
 - Common textual and statistical missing-value sentinels are converted to pandas nulls before numeric coercion.
 - Every observation carries `data_source`, a stable lowercase provider slug, alongside the human-readable `source` field.
 - The canonical observation primary key is `(date, source, series_id, geography)`. Duplicate keys fail closed rather than silently multiplying rows.
@@ -63,7 +63,7 @@ Version 0.6.0 establishes a strict ingestion boundary. Every provider result is 
 - Workbook output is atomic and replacement-based. A stable run ID is recorded in the README sheet so repeated logical runs are traceable without appending to stale output.
 - Preview/clean operations remain derived transformations and never mutate the canonical ingested observations.
 
-The application intentionally preserves case-sensitive identifiers because lowercasing those values would break some provider APIs. This is the only deliberate exception to blanket string lowercasing.
+The application intentionally preserves the original case of both identifiers and human-readable text: lowercasing identifiers would break some provider APIs, and lowercasing display text like series names would contradict the "raw provider observations are canonical" guarantee below. Only column names and geography codes are case-normalized.
 
 ## Architecture
 
