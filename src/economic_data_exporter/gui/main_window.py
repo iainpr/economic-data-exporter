@@ -638,7 +638,15 @@ class MainWindow(QMainWindow):
         for source_name in self.sources:
             check = QCheckBox(source_name)
             check.setObjectName("sourceCheck")
-            check.setToolTip(self._source_description(source_name))
+            if source_name == "FAOSTAT":
+                check.setEnabled(False)
+                check.setToolTip(
+                    "FAOSTAT retrieval is intentionally not enabled: the official API "
+                    "query/authentication contract has not been fully verified. "
+                    "Every request would fail."
+                )
+            else:
+                check.setToolTip(self._source_description(source_name))
             check.stateChanged.connect(self._source_selection_changed)
             source_layout.addWidget(check)
             self.source_checks[source_name] = check
@@ -940,7 +948,8 @@ class MainWindow(QMainWindow):
 
     def _select_all_sources(self) -> None:
         for check in self.source_checks.values():
-            check.setChecked(True)
+            if check.isEnabled():
+                check.setChecked(True)
 
     def _clear_sources(self) -> None:
         for check in self.source_checks.values():

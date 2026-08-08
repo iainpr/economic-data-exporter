@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from io import StringIO
 
@@ -14,6 +15,8 @@ from economic_data_exporter.network import HttpClient
 from economic_data_exporter.sources.base import CancelCheck, DataSource, finish_result
 from economic_data_exporter.sources.sdmx import SDMXSource
 from economic_data_exporter.utils.validation import validate_series_id
+
+LOGGER = logging.getLogger(__name__)
 
 
 class StatisticsCanadaSource(DataSource):
@@ -229,6 +232,11 @@ class ILOStatSource(DataSource):
             frame = pd.read_csv(StringIO(response.text))
             label = str(frame.iloc[0].get("indicator.label", code)) if not frame.empty else code
         except Exception:
+            LOGGER.warning(
+                "ILOSTAT metadata lookup for %r failed; falling back to the raw code as the label.",
+                code,
+                exc_info=True,
+            )
             label = code
         return [
             SeriesMetadata(
