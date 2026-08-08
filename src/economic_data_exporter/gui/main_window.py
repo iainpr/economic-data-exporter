@@ -1260,6 +1260,17 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: object) -> None:
         if self.runner:
             self.runner.cancel()
+        thread = self._worker_thread
+        if thread is not None and thread.isRunning():
+            thread.quit()
+            if not thread.wait(5000):
+                event.ignore()  # type: ignore[attr-defined]
+                QMessageBox.warning(
+                    self,
+                    "Operation in progress",
+                    "A background operation is still finishing. Please wait a moment and close again.",
+                )
+                return
         self.client.close()
         super().closeEvent(event)  # type: ignore[arg-type]
 
