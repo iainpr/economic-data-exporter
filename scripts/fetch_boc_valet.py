@@ -37,13 +37,14 @@ IDENTIFIERS = [
     "BROKER_AVERAGE_5YR_VRM",
     "V39079",
     "M.BCPI",
-    "CSCE_C7_AB",
-    "CSCE_C7_AT",
-    "CSCE_C7_BC",
-    "CSCE_C7_QC",
-    "CSCE_C7_MB",
-    "CSCE_C7_SK",
-    "CSCE_C7_ON",
+    # CSCE: expected house-price growth, next 12 months, by province/region
+    "FVI_CSCE_AB",
+    "FVI_CSCE_ATL",
+    "FVI_CSCE_BC",
+    "FVI_CSCE_QC",
+    "FVI_CSCE_MB",
+    "FVI_CSCE_SK",
+    "FVI_CSCE_ON",
 ]
 
 
