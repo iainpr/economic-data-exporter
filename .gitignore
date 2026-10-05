@@ -13,3 +13,6 @@ build/
 .env
 benchmarks/results/cache_*/
 benchmarks/results/*.xlsx
+
+# Output of scripts/fetch_boc_valet.py
+boc_valet_data.*
